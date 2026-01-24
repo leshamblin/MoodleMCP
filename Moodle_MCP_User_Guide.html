@@ -214,6 +214,25 @@
     }
   }
 }</pre>
+
+        <h3>For Gemini CLI (with Gemini Pro account):</h3>
+        <p>You can also use the Moodle MCP Server with a <strong>Gemini Pro account</strong> via the Gemini CLI. For detailed setup instructions, see the <a href="https://geminicli.com/docs/" target="_blank" rel="noopener noreferrer">Gemini CLI Documentation</a>.</p>
+        <p>Add the MCP server configuration to your Gemini CLI settings file:</p>
+        <pre>
+{
+  "mcpServers": {
+    "moodle": {
+      "command": "python",
+      "args": ["-m", "moodle_mcp.main"],
+      "env": {
+        "PYTHONPATH": "/absolute/path/to/MoodleAPI/src",
+        "MOODLE_PROD_URL": "https://your-moodle-site.edu",
+        "MOODLE_PROD_TOKEN": "YOUR_TOKEN_HERE",
+        "MOODLE_ENV": "prod"
+      }
+    }
+  }
+}</pre>
     </section>
 
     <section id="safety">
