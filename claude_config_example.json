@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "moodle": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/Users/wjs/Documents/Programming/MoodleAPI",
+        "run",
+        "python",
+        "-m",
+        "moodle_mcp.main"
+      ],
+      "env": {
+        "MOODLE_URL": "https://your-moodle-site.com",
+        "MOODLE_TOKEN": "your_actual_token_here"
+      }
+    }
+  }
+}

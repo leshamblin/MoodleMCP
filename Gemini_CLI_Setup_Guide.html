@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini CLI | Setup & Configuration Guide</title>
+    <style>
+        :root {
+            --primary-color: #CC0000; /* NC State Red */
+            --secondary-color: #2d2d2d;
+            --bg-color: #f8f9fa;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --code-bg: #1e1e1e;
+            --code-text: #d4d4d4;
+            --accent-blue: #007bff;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 40px;
+            background: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        header {
+            text-align: center;
+            border-bottom: 2px solid #eee;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+        }
+
+        h1 {
+            color: var(--primary-color);
+            margin: 0;
+            font-size: 32px;
+            font-weight: 800;
+        }
+
+        .version-badge {
+            display: inline-block;
+            background: #eee;
+            padding: 2px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        h2 {
+            color: var(--secondary-color);
+            border-bottom: 1px solid #eee;
+            padding-bottom: 8px;
+            margin-top: 40px;
+        }
+
+        .step {
+            margin-bottom: 30px;
+        }
+
+        .step-number {
+            background: var(--primary-color);
+            color: white;
+            width: 28px;
+            height: 28px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        code {
+            background-color: #f1f1f1;
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 0.9em;
+        }
+
+        pre {
+            background-color: var(--code-bg);
+            color: var(--code-text);
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 14px;
+            position: relative;
+        }
+
+        .note {
+            background-color: #fff3cd;
+            border-left: 5px solid #ffecb5;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+
+        .command-desc {
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 50px;
+            color: #888;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Gemini CLI Setup Guide</h1>
+        <div class="version-badge">v0.24.0</div>
+    </header>
+
+    <div class="step">
+        <h2><span class="step-number">1</span> Obtain a Google AI API Key</h2>
+        <p>To power the CLI, you need an API key from Google AI Studio.</p>
+        <ul>
+            <li>Visit <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a>.</li>
+            <li>Click <strong>"Create API key"</strong>.</li>
+            <li>Copy the key and store it securely.</li>
+        </ul>
+    </div>
+
+    <div class="step">
+        <h2><span class="step-number">2</span> Configure Environment Variables</h2>
+        <p>The Gemini CLI looks for your key in the <code>GOOGLE_API_KEY</code> environment variable.</p>
+        <p>Add this to your <code>.zshrc</code> or <code>.bash_profile</code>:</p>
+        <pre>export GOOGLE_API_KEY="your_api_key_here"</pre>
+        <p>Then reload your terminal: <code>source ~/.zshrc</code></p>
+    </div>
+
+    <div class="step">
+        <h2><span class="step-number">3</span> Install Moodle MCP Integration</h2>
+        <p>Connect your Moodle tool to the Gemini CLI so you can ask about your courses and gradebooks.</p>
+        <p>Run the following command (update paths as needed):</p>
+        <pre>gemini mcp add moodle python -m moodle_mcp.main --env PYTHONPATH="/absolute/path/to/MoodleAPI/src"</pre>
+    </div>
+
+    <div class="step">
+        <h2><span class="step-number">4</span> Core CLI Commands</h2>
+        <p>The CLI can be used in several modes:</p>
+        
+        <p><span class="command-desc">Interactive Mode:</span> Just type <code>gemini</code> to start a chat session.</p>
+        <p><span class="command-desc">One-Shot Prompt:</span> <code>gemini "Tell me about course ID 6292"</code></p>
+        <p><span class="command-desc">YOLO Mode:</span> <code>gemini -y</code> (Automatically accepts all tool calls without prompting—<strong>use with caution!</strong>)</p>
+        <p><span class="command-desc">Resume Session:</span> <code>gemini --resume latest</code></p>
+    </div>
+
+    <div class="note">
+        <strong>💡 Pro Tip:</strong> Use the <code>--model</code> flag to switch between different Gemini models, such as <code>gemini-1.5-pro</code> or <code>gemini-1.5-flash</code>.
+    </div>
+
+    <div class="step">
+        <h2><span class="step-number">5</span> Troubleshooting</h2>
+        <ul>
+            <li><strong>Command not found:</strong> Ensure your Python scripts folder is in your system <code>PATH</code>.</li>
+            <li><strong>Permission Denied:</strong> Ensure you have granted "Web Service" permissions to your token in Moodle.</li>
+            <li><strong>MCP Server Error:</strong> Check that your <code>PYTHONPATH</code> accurately points to the <code>src</code> directory of the MoodleAPI project.</li>
+        </ul>
+    </div>
+
+    <div class="footer">
+        Generated for NC State Moodle API Integration | January 2026
+    </div>
+</div>
+
+</body>
+</html>

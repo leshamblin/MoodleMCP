@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moodle MCP Server | User Instruction Guide</title>
+    <style>
+        :root {
+            --primary-color: #CC0000; /* NC State Red */
+            --secondary-color: #444444;
+            --bg-color: #f4f4f9;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --code-bg: #2d2d2d;
+            --code-text: #f8f8f2;
+            --accent-color: #007bff;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 40px auto;
+            padding: 40px;
+            background: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+
+        header {
+            text-align: center;
+            border-bottom: 3px solid var(--primary-color);
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+        }
+
+        h1 {
+            color: var(--primary-color);
+            margin: 0;
+            font-size: 36px;
+            letter-spacing: -1px;
+        }
+
+        .subtitle {
+            color: var(--secondary-color);
+            font-size: 18px;
+            font-weight: 400;
+        }
+
+        h2 {
+            color: var(--primary-color);
+            border-left: 6px solid var(--primary-color);
+            padding-left: 15px;
+            margin-top: 40px;
+            font-size: 24px;
+        }
+
+        h3 {
+            color: var(--secondary-color);
+            margin-top: 25px;
+            font-size: 20px;
+        }
+
+        p { margin-bottom: 15px; }
+
+        .highlight-box {
+            background-color: #fff3f3;
+            border: 1px solid #ffcccc;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .step-list {
+            padding-left: 20px;
+        }
+
+        .step-list li {
+            margin-bottom: 12px;
+        }
+
+        code {
+            background-color: #eee;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+        }
+
+        pre {
+            background-color: var(--code-bg);
+            color: var(--code-text);
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .tool-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .tool-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            transition: transform 0.2s;
+        }
+
+        .tool-card:hover {
+            transform: translateY(-3px);
+            border-color: var(--primary-color);
+        }
+
+        .tool-card strong {
+            display: block;
+            color: var(--primary-color);
+            margin-bottom: 5px;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 60px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            font-size: 14px;
+            color: #888;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        .badge-read { background-color: #e3f2fd; color: #0d47a1; }
+        .badge-write { background-color: #fff3e0; color: #e65100; }
+        .badge-safety { background-color: #e8f5e9; color: #1b5e20; }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Moodle MCP Server</h1>
+        <div class="subtitle">Instruction Guide for Advanced LMS Integration</div>
+    </header>
+
+    <section id="overview">
+        <h2>🚀 What is this tool?</h2>
+        <p>The <strong>Moodle MCP Server</strong> is a powerful bridge that connects AI assistants (like Claude or Gemini) directly to your Moodle environment. It allows the AI to "understand" your course structure, read assignments, check gradebooks, and even help manage course activities—all through natural language conversation.</p>
+        
+        <div class="highlight-box">
+            <strong>Key Benefits:</strong>
+            <ul>
+                <li><strong>Efficiency:</strong> No more clicking through dozens of Moodle pages to find a grade or check a submission.</li>
+                <li><strong>Intelligence:</strong> Ask the AI to compare your syllabus with your gradebook configuration (as seen in the BUS 460 audit).</li>
+                <li><strong>Safety:</strong> Built-in safeguards prevent accidental changes to production data.</li>
+            </ul>
+        </div>
+    </section>
+
+    <section id="token">
+        <h2>🔑 Step 1: Getting Your Moodle Token</h2>
+        <p>To use this tool, you need a personal "Web Service Token" (API Key) from Moodle. This token acts as your digital signature, allowing the AI to access only what you have permission to see.</p>
+        
+        <ol class="step-list">
+            <li><strong>Log in to Moodle:</strong> Navigate to your institution's Moodle site.</li>
+            <li><strong>Go to Preferences:</strong> Click your user icon in the top right, then select <code>Preferences</code>.</li>
+            <li><strong>Find Security Keys:</strong> Under the <code>User account</code> section, look for <code>Security keys</code>.</li>
+            <li><strong>Generate Token:</strong> If you see a service named "Moodle Web Services" or "MCP API", copy the corresponding key.
+                <ul>
+                    <li><em>Note: If no key is listed, you may need to click "Request a key" or contact your Moodle administrator to enable "Web Services" for your account.</em></li>
+                </ul>
+            </li>
+            <li><strong>Save Securely:</strong> Copy this long string of letters and numbers. <strong>Treat it like a password!</strong></li>
+        </ol>
+    </section>
+
+    <section id="setup">
+        <h2>🛠️ Step 2: Setup & Integration</h2>
+        <p>Once you have your token, you need to add the MCP server to your AI desktop client (e.g., Claude Desktop).</p>
+        
+        <h3>For Claude Desktop:</h3>
+        <p>Add the following configuration to your <code>claude_desktop_config.json</code> file:</p>
+        <pre>
+{
+  "mcpServers": {
+    "moodle": {
+      "command": "python",
+      "args": ["-m", "moodle_mcp.main"],
+      "env": {
+        "PYTHONPATH": "/absolute/path/to/MoodleAPI/src",
+        "MOODLE_PROD_URL": "https://your-moodle-site.edu",
+        "MOODLE_PROD_TOKEN": "YOUR_TOKEN_HERE",
+        "MOODLE_ENV": "prod"
+      }
+    }
+  }
+}</pre>
+    </section>
+
+    <section id="safety">
+        <h2>🛡️ Safety & Data Protection</h2>
+        <div class="badge badge-safety">Enterprise Grade Safety</div>
+        <p>This tool is designed with a "Safety First" philosophy to protect your course data:</p>
+        <ul>
+            <li><strong>Read-Only by Default:</strong> The tool can read data from any course you have access to, but it cannot make changes unless explicitly configured.</li>
+            <li><strong>Whitelisting:</strong> Write operations (like updating grades) are restricted to specific "Playground" courses by default.</li>
+            <li><strong>Production Lockdown:</strong> All destructive operations (deleting) are disabled in production environments unless multiple confirmation steps are cleared.</li>
+        </ul>
+    </section>
+
+    <section id="tools">
+        <h2>📦 Available Tool Categories</h2>
+        <p>With <strong>68 specialized tools</strong>, you can perform almost any action available in the Moodle UI:</p>
+        
+        <div class="tool-grid">
+            <div class="tool-card">
+                <div class="badge badge-read">READ</div>
+                <strong>📚 Course Management</strong>
+                Check contents, modules, enrollment lists, and recently accessed courses.
+            </div>
+            <div class="tool-card">
+                <div class="badge badge-read">READ</div>
+                <strong>📊 Gradebook Analysis</strong>
+                Retrieve detailed grade reports, item summaries, and overall class standings.
+            </div>
+            <div class="tool-card">
+                <div class="badge badge-write">WRITE</div>
+                <strong>📝 Assignments & Quizzes</strong>
+                Grade submissions, update feedback, and manage quiz attempts.
+            </div>
+            <div class="tool-card">
+                <div class="badge badge-write">WRITE</div>
+                <strong>💬 Communication</strong>
+                Send private messages, create forum discussions, and manage calendar events.
+            </div>
+        </div>
+    </section>
+
+    <div class="footer">
+        Generated by the Moodle MCP Server Project | v1.0.0 | January 2026
+    </div>
+</div>
+
+</body>
+</html>

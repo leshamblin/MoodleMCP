@@ -1,0 +1,136 @@
+# Environment files - NEVER COMMIT THESE
+.env
+.env.local
+.env.*.local
+*.env
+.env.backup
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+virtualenv/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# IDEs
+.vscode/
+.idea/
+.gemini/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.hypothesis/
+.pytype/
+nosetests.xml
+coverage.xml
+*.cover
+
+# Logs
+*.log
+logs/
+audit.log
+*.log.*
+
+# Secrets and credentials
+secrets/
+credentials/
+*.key
+*.pem
+*.p12
+*.pfx
+*_rsa
+*_rsa.pub
+
+# Local development
+local_settings.py
+*.local.json
+.env.development
+.env.production
+
+# Data files - NEVER COMMIT THESE
+*.csv
+*.xlsx
+*.xls
+*.docx
+*.doc
+*.pdf
+gradebook*.*
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~.nib
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Documentation builds
+docs/_build/
+site/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# MCP specific
+mcp_server.log
+debug.log
+test_output.txt
+
+# Course data folders (private student data)
+MBA531-teams/
+Panopto-quiz-results/
+temp/
+
+# Local utility scripts
+compare_grades.py
+compare_grades_sections.py
+find_mie_courses.py
+read_report.py
+
+# Office temporary files
+~$*
