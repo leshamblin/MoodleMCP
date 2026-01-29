@@ -56,7 +56,7 @@ MOODLE_PROD_ALLOW_WRITES=false
 
 ### 4. Connect to Gemini CLI
 
-See the [Gemini CLI MCP Setup Guide](https://github.com/leshamblin/MoodleMCP/blob/main/Gemini_CLI_Setup_Guide.html) for detailed instructions on connecting this server to Gemini CLI.
+See the [Gemini CLI MCP Setup Guide](Gemini_CLI_Setup_Guide.md) for detailed instructions on connecting this server to Gemini CLI.
 
 ---
 

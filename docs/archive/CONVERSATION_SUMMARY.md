@@ -175,7 +175,7 @@ ModuleNotFoundError: No module named 'moodle_mcp'
 **Fix:** Added to Claude Desktop config:
 ```json
 "env": {
-  "PYTHONPATH": "/Users/wjs/Documents/Programming/MoodleAPI/src"
+  "PYTHONPATH": "/Users/leshamb2/Documents/Programming/MoodleMCP/src"
 }
 ```
 
@@ -239,14 +239,14 @@ else:
       "command": "uv",
       "args": [
         "--directory",
-        "/Users/wjs/Documents/Programming/MoodleAPI",
+        "/Users/leshamb2/Documents/Programming/MoodleMCP",
         "run",
         "python",
         "-m",
         "moodle_mcp.main"
       ],
       "env": {
-        "PYTHONPATH": "/Users/wjs/Documents/Programming/MoodleAPI/src",
+        "PYTHONPATH": "/Users/leshamb2/Documents/Programming/MoodleMCP/src",
         "MOODLE_URL": "https://your-moodle-site.com",
         "MOODLE_TOKEN": "your_actual_token_here"
       }

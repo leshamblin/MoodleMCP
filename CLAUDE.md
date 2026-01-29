@@ -5,7 +5,7 @@
 This is the **Moodle MCP Server** - a comprehensive Model Context Protocol server for Moodle LMS integration with enterprise-grade safety features.
 
 ### Key Facts
-- **Location:** `/Users/wjs/Documents/Programming/MoodleAPI`
+- **Location:** `/Users/leshamb2/Documents/Programming/MoodleMCP`
 - **Status:** Production-ready with 46 tools (40 READ + 6 WRITE)
 - **Coverage:** 28% of Moodle Web Services API (167 total functions available)
 - **Primary User:** Elizabeth Shamblin (leshamb2@ncsu.edu)

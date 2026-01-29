@@ -164,14 +164,14 @@ Group-related functions: 12
       "command": "uv",
       "args": [
         "--directory",
-        "/Users/wjs/Documents/Programming/MoodleAPI",
+        "/Users/leshamb2/Documents/Programming/MoodleMCP",
         "run",
         "python",
         "-m",
         "moodle_mcp.main"
       ],
       "env": {
-        "PYTHONPATH": "/Users/wjs/Documents/Programming/MoodleAPI/src"
+        "PYTHONPATH": "/Users/leshamb2/Documents/Programming/MoodleMCP/src"
       }
     }
   }
@@ -189,14 +189,14 @@ Group-related functions: 12
       "command": "uv",
       "args": [
         "--directory",
-        "/Users/wjs/Documents/Programming/MoodleAPI",
+        "/Users/leshamb2/Documents/Programming/MoodleMCP",
         "run",
         "python",
         "-m",
         "moodle_mcp.main"
       ],
       "env": {
-        "PYTHONPATH": "/Users/wjs/Documents/Programming/MoodleAPI/src",
+        "PYTHONPATH": "/Users/leshamb2/Documents/Programming/MoodleMCP/src",
         "MOODLE_ENV": "dev"
       }
     },
@@ -204,14 +204,14 @@ Group-related functions: 12
       "command": "uv",
       "args": [
         "--directory",
-        "/Users/wjs/Documents/Programming/MoodleAPI",
+        "/Users/leshamb2/Documents/Programming/MoodleMCP",
         "run",
         "python",
         "-m",
         "moodle_mcp.main"
       ],
       "env": {
-        "PYTHONPATH": "/Users/wjs/Documents/Programming/MoodleAPI/src",
+        "PYTHONPATH": "/Users/leshamb2/Documents/Programming/MoodleMCP/src",
         "MOODLE_ENV": "prod"
       }
     }

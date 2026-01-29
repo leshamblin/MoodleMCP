@@ -53,14 +53,14 @@ MOODLE_TOKEN=REDACTED_DEV_TOKEN
       "command": "uv",
       "args": [
         "--directory",
-        "/Users/wjs/Documents/Programming/MoodleAPI",
+        "/Users/leshamb2/Documents/Programming/MoodleMCP",
         "run",
         "python",
         "-m",
         "moodle_mcp.main"
       ],
       "env": {
-        "PYTHONPATH": "/Users/wjs/Documents/Programming/MoodleAPI/src",
+        "PYTHONPATH": "/Users/leshamb2/Documents/Programming/MoodleMCP/src",
         "MOODLE_URL": "https://moodle-courses2527.wolfware.ncsu.edu",
         "MOODLE_TOKEN": "your_courses_token_here"
       }
@@ -69,14 +69,14 @@ MOODLE_TOKEN=REDACTED_DEV_TOKEN
       "command": "uv",
       "args": [
         "--directory",
-        "/Users/wjs/Documents/Programming/MoodleAPI",
+        "/Users/leshamb2/Documents/Programming/MoodleMCP",
         "run",
         "python",
         "-m",
         "moodle_mcp.main"
       ],
       "env": {
-        "PYTHONPATH": "/Users/wjs/Documents/Programming/MoodleAPI/src",
+        "PYTHONPATH": "/Users/leshamb2/Documents/Programming/MoodleMCP/src",
         "MOODLE_URL": "https://moodle-projects.wolfware.ncsu.edu",
         "MOODLE_TOKEN": "REDACTED_DEV_TOKEN"
       }
@@ -102,11 +102,11 @@ Create two separate installations:
 
 ```bash
 # Instance 1
-/Users/wjs/Documents/Programming/MoodleAPI-Courses/
+/Users/leshamb2/Documents/Programming/MoodleMCP-Courses/
   .env -> MOODLE_URL=moodle-courses2527...
 
 # Instance 2
-/Users/wjs/Documents/Programming/MoodleAPI-Projects/
+/Users/leshamb2/Documents/Programming/MoodleMCP-Projects/
   .env -> MOODLE_URL=moodle-projects...
 ```
 
