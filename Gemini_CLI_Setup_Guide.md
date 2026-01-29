@@ -6,20 +6,23 @@
 
 Gemini CLI supports multiple authentication methods. Choose the one that fits your situation.
 
+For complete details, see the [official Gemini CLI authentication guide](https://geminicli.com/docs/get-started/authentication/).
+
 ### Option A: Login with Google (Recommended for Organizations)
 
 **Best for:** Users with a company, school, or Google Workspace account.
 
+This is the recommended method for university and organization users:
+
 1. Run `gemini` in your terminal
 2. Select **"Login with Google"**
 3. Follow the browser-based login flow
-4. If prompted, create or select a Google Cloud project
-
-For organization accounts, you may need to:
-- Create a Google Cloud project at [console.cloud.google.com](https://console.cloud.google.com)
-- Enable the required APIs for your project
+4. If prompted, create or select a Google Cloud project at [console.cloud.google.com](https://console.cloud.google.com)
+5. Enable any required APIs for your project when prompted
 
 Credentials are cached locally for future sessions.
+
+> **Note for Organization Users:** If you're using a company, school, or Google Workspace account, you may need admin approval or specific project configuration. See the [authentication guide](https://geminicli.com/docs/get-started/authentication/) for detailed instructions.
 
 ### Option B: Personal Google Account
 
