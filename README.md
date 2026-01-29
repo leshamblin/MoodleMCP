@@ -30,13 +30,34 @@ With write permissions enabled, the AI can also:
 1. Log in to your Moodle site
 2. Go to **Profile** (click your name) > **Preferences** > **Security keys**
 3. Create a new token or copy an existing one
-4. Save this token somewhere safe - you'll need it in step 3
+4. Save this token somewhere safe - you'll need it in step 4
 
-### 2. Download This Project
+### 2. Install uv (Package Manager)
 
-Download or clone this folder to your computer. Remember where you put it.
+This project uses [uv](https://docs.astral.sh/uv/) for dependency management. Install it first:
 
-### 3. Create Your Configuration File
+```bash
+# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Or with Homebrew
+brew install uv
+```
+
+For other installation methods, see the [uv installation docs](https://docs.astral.sh/uv/getting-started/installation/).
+
+### 3. Download and Set Up the Project
+
+1. Download or clone this folder to your computer
+2. Open a terminal and navigate to the project folder
+3. Install dependencies:
+
+```bash
+cd /path/to/MoodleMCP
+uv sync
+```
+
+### 4. Create Your Configuration File
 
 1. Find the file called `.env.example` in the project folder
 2. Make a copy and rename it to `.env`
@@ -54,7 +75,7 @@ MOODLE_DEV_COURSE_WHITELIST=7299
 MOODLE_PROD_ALLOW_WRITES=false
 ```
 
-### 4. Connect to Gemini CLI
+### 5. Connect to Gemini CLI
 
 See the [Gemini CLI MCP Setup Guide](Gemini_CLI_Setup_Guide.md) for detailed instructions on connecting this server to Gemini CLI.
 
@@ -117,23 +138,9 @@ Only courses in this list will allow write operations. This keeps you safe while
 ## Requirements
 
 - Python 3.10 or higher
+- [uv](https://docs.astral.sh/uv/) package manager
 - A Moodle account with Web Services access
 - Gemini CLI
-
-### Installing Python Dependencies
-
-If you get import errors, install the required packages:
-
-```bash
-pip install fastmcp httpx pydantic pydantic-settings python-dotenv
-```
-
-Or if you have `uv` installed:
-
-```bash
-cd /path/to/MoodleAPI
-uv sync
-```
 
 ---
 
