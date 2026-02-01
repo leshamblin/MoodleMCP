@@ -59,19 +59,42 @@ uv sync
 
 ### 4. Create Your Configuration File
 
-1. Find the file called `.env.example` in the project folder
-2. Make a copy and rename it to `.env`
-3. Open `.env` in a text editor and fill in your details:
+1. Copy `.env.example` to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
 
+2. Open `.env` in a text editor and configure your Moodle connection:
+
+**For most users (single Moodle instance):**
 ```bash
 # Your Moodle site URL (no trailing slash)
 MOODLE_DEV_URL=https://your-moodle-site.edu
 
 # Your token from step 1
 MOODLE_DEV_TOKEN=paste_your_token_here
+```
 
-# Leave these as-is for safety
+**If you have separate dev and production Moodle instances:**
+```bash
+# Development instance
+MOODLE_DEV_URL=https://moodle-dev.your-school.edu
+MOODLE_DEV_TOKEN=your_dev_token
+
+# Production instance
+MOODLE_PROD_URL=https://moodle.your-school.edu
+MOODLE_PROD_TOKEN=your_prod_token
+
+# Switch between them with:
+MOODLE_ENV=dev   # or 'prod'
+```
+
+**Write safety (optional):**
+```bash
+# Only allow write operations in these courses (comma-separated IDs)
 MOODLE_DEV_COURSE_WHITELIST=7299
+
+# Block all writes in production (recommended)
 MOODLE_PROD_ALLOW_WRITES=false
 ```
 
