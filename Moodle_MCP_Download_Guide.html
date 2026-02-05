@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moodle MCP Server | Download & Setup Guide</title>
+    <style>
+        :root {
+            --primary-color: #CC0000;
+            --secondary-color: #2d2d2d;
+            --bg-color: #f8f9fa;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --code-bg: #1e1e1e;
+            --code-text: #d4d4d4;
+            --accent-blue: #007bff;
+            --success-green: #28a745;
+            --warning-yellow: #ffc107;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.7;
+            color: var(--text-color);
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 40px;
+            background: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        header {
+            text-align: center;
+            border-bottom: 2px solid #eee;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+        }
+
+        h1 {
+            color: var(--primary-color);
+            margin: 0;
+            font-size: 32px;
+            font-weight: 800;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 16px;
+            margin-top: 8px;
+        }
+
+        h2 {
+            color: var(--secondary-color);
+            border-bottom: 1px solid #eee;
+            padding-bottom: 8px;
+            margin-top: 50px;
+        }
+
+        h3 {
+            color: var(--secondary-color);
+            margin-top: 25px;
+        }
+
+        .step-number {
+            background: var(--primary-color);
+            color: white;
+            width: 32px;
+            height: 32px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            font-weight: bold;
+            margin-right: 10px;
+            font-size: 16px;
+        }
+
+        code {
+            background-color: #f1f1f1;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            font-size: 0.9em;
+        }
+
+        pre {
+            background-color: var(--code-bg);
+            color: var(--code-text);
+            padding: 16px 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: inherit;
+        }
+
+        .note {
+            background-color: #fff3cd;
+            border-left: 5px solid #ffca28;
+            padding: 15px 20px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+
+        .note strong {
+            color: #856404;
+        }
+
+        .tip {
+            background-color: #d4edda;
+            border-left: 5px solid var(--success-green);
+            padding: 15px 20px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+
+        .tip strong {
+            color: #155724;
+        }
+
+        .warning {
+            background-color: #f8d7da;
+            border-left: 5px solid #dc3545;
+            padding: 15px 20px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+
+        .warning strong {
+            color: #721c24;
+        }
+
+        .screenshot-placeholder {
+            background: #e9ecef;
+            border: 2px dashed #adb5bd;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            color: #6c757d;
+            margin: 15px 0;
+            font-style: italic;
+        }
+
+        ol.steps > li {
+            margin-bottom: 12px;
+        }
+
+        .checklist {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .checklist li {
+            padding: 6px 0;
+            padding-left: 28px;
+            position: relative;
+        }
+
+        .checklist li::before {
+            content: "\2610";
+            position: absolute;
+            left: 0;
+            font-size: 18px;
+        }
+
+        .toc {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px 30px;
+            margin: 20px 0 40px 0;
+        }
+
+        .toc h3 {
+            margin-top: 0;
+            color: var(--primary-color);
+        }
+
+        .toc ol {
+            margin-bottom: 0;
+        }
+
+        .toc li {
+            padding: 3px 0;
+        }
+
+        .toc a {
+            color: var(--accent-blue);
+            text-decoration: none;
+        }
+
+        .toc a:hover {
+            text-decoration: underline;
+        }
+
+        a {
+            color: var(--accent-blue);
+        }
+
+        .time-estimate {
+            display: inline-block;
+            background: #e9ecef;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 13px;
+            color: #495057;
+            margin-left: 10px;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #888;
+            font-size: 14px;
+        }
+
+        @media print {
+            body { background: white; }
+            .container { box-shadow: none; margin: 0; padding: 20px; }
+            pre { border: 1px solid #ccc; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Moodle MCP Server</h1>
+        <p class="subtitle">Download &amp; Setup Guide for NC State Faculty</p>
+    </header>
+
+    <div class="toc">
+        <h3>What We'll Do</h3>
+        <ol>
+            <li><a href="#prereqs">Install the required software</a> <span class="time-estimate">~10 min</span></li>
+            <li><a href="#download">Download the Moodle MCP Server from GitHub</a> <span class="time-estimate">~2 min</span></li>
+            <li><a href="#token">Get your Moodle security token</a> <span class="time-estimate">~3 min</span></li>
+            <li><a href="#configure">Configure your settings</a> <span class="time-estimate">~5 min</span></li>
+            <li><a href="#connect">Connect to Gemini CLI</a> <span class="time-estimate">~5 min</span></li>
+            <li><a href="#test">Test that it works</a> <span class="time-estimate">~2 min</span></li>
+        </ol>
+    </div>
+
+    <!-- ================================================================ -->
+    <h2 id="prereqs"><span class="step-number">1</span> Install Required Software</h2>
+
+    <p>Before we start, you'll need two things installed on your computer: <strong>Python</strong> and <strong>Gemini CLI</strong>.</p>
+
+    <h3>Check if Python is already installed</h3>
+    <p>Open <strong>Terminal</strong> (on Mac: press <kbd>Cmd</kbd> + <kbd>Space</kbd>, type "Terminal", press Enter) and type:</p>
+    <pre><code>python3 --version</code></pre>
+    <p>If you see something like <code>Python 3.10.x</code> or higher, you're good! Skip to "Install Gemini CLI" below.</p>
+    <p>If you get an error or see a version below 3.10, you'll need to install Python:</p>
+    <ol class="steps">
+        <li>Go to <a href="https://www.python.org/downloads/" target="_blank">python.org/downloads</a></li>
+        <li>Click the big yellow <strong>"Download Python 3.x"</strong> button</li>
+        <li>Open the downloaded file and follow the installer</li>
+        <li>When done, close and re-open Terminal, then try <code>python3 --version</code> again</li>
+    </ol>
+
+    <h3>Install uv (Python package manager)</h3>
+    <p><code>uv</code> is a tool that manages the Python packages the Moodle server needs. In Terminal, paste this command:</p>
+    <pre><code>curl -LsSf https://astral.sh/uv/install.sh | sh</code></pre>
+    <p>Close and re-open Terminal after installing.</p>
+
+    <h3>Install Gemini CLI</h3>
+    <p>Gemini CLI requires Node.js. First, check if you have it:</p>
+    <pre><code>node --version</code></pre>
+    <p>If you get an error, install Node.js from <a href="https://nodejs.org" target="_blank">nodejs.org</a> (choose the LTS version).</p>
+    <p>Then install Gemini CLI:</p>
+    <pre><code>npm install -g @anthropic-ai/gemini-cli</code></pre>
+
+    <div class="note">
+        <strong>Note:</strong> If you already have Gemini CLI installed, you can skip this step. If you're unsure, type <code>gemini --version</code> in Terminal to check.
+    </div>
+
+    <h3>Get a Google AI API Key</h3>
+    <ol class="steps">
+        <li>Go to <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a></li>
+        <li>Sign in with your Google account</li>
+        <li>Click <strong>"Create API key"</strong></li>
+        <li>Copy the key (it looks like a long string of letters and numbers)</li>
+        <li>In Terminal, run this command (replacing <code>YOUR_KEY</code> with the key you copied):</li>
+    </ol>
+    <pre><code>echo 'export GOOGLE_API_KEY="YOUR_KEY"' >> ~/.zshrc
+source ~/.zshrc</code></pre>
+
+    <div class="tip">
+        <strong>Tip:</strong> If you're on an older Mac using bash instead of zsh, replace <code>~/.zshrc</code> with <code>~/.bash_profile</code> in the command above.
+    </div>
+
+    <!-- ================================================================ -->
+    <h2 id="download"><span class="step-number">2</span> Download the Moodle MCP Server from GitHub</h2>
+
+    <p>The Moodle MCP Server code is hosted on GitHub. You don't need a GitHub account to download it.</p>
+
+    <ol class="steps">
+        <li>Open this link in your web browser: <br>
+            <a href="https://github.com/leshamblin/MoodleMCP" target="_blank" style="font-size: 18px; font-weight: bold;">https://github.com/leshamblin/MoodleMCP</a>
+        </li>
+        <li>On the GitHub page, look for the green <strong>"&lt;&gt; Code"</strong> button (it's near the top right of the file list)</li>
+        <li>Click the green button</li>
+        <li>In the dropdown that appears, click <strong>"Download ZIP"</strong></li>
+    </ol>
+
+    <div class="screenshot-placeholder">
+        [Screenshot: The green "Code" button on GitHub with the "Download ZIP" option highlighted]
+    </div>
+
+    <ol class="steps" start="5">
+        <li>A file called <code>MoodleMCP-main.zip</code> will download to your Downloads folder</li>
+        <li><strong>Double-click the ZIP file</strong> to extract it. This creates a folder called <code>MoodleMCP-main</code></li>
+        <li><strong>Move this folder</strong> somewhere you'll remember. We recommend your <strong>Documents</strong> folder:
+            <ul>
+                <li>Open Finder</li>
+                <li>Drag the <code>MoodleMCP-main</code> folder from Downloads into <strong>Documents</strong></li>
+            </ul>
+        </li>
+    </ol>
+
+    <div class="tip">
+        <strong>Tip:</strong> You can rename the folder to just <code>MoodleMCP</code> if you prefer. Just remember the name you chose for later steps.
+    </div>
+
+    <h3>Install the Python dependencies</h3>
+    <p>In Terminal, navigate to the folder you just downloaded and install the required packages:</p>
+    <pre><code>cd ~/Documents/MoodleMCP-main
+uv sync</code></pre>
+    <p>This will take a minute as it downloads the libraries the server needs. You should see output ending with something like "Resolved X packages" and no errors.</p>
+
+    <div class="note">
+        <strong>Note:</strong> If you renamed the folder, use that name instead of <code>MoodleMCP-main</code>. For example: <code>cd ~/Documents/MoodleMCP</code>
+    </div>
+
+    <!-- ================================================================ -->
+    <h2 id="token"><span class="step-number">3</span> Get Your Moodle Security Token</h2>
+
+    <p>The Moodle MCP Server needs a special "token" to access your Moodle data. This is like a password that lets the server read your courses on your behalf.</p>
+
+    <ol class="steps">
+        <li>Log in to your Moodle site in a web browser</li>
+        <li>Click your <strong>name or profile picture</strong> in the top-right corner</li>
+        <li>Click <strong>"Preferences"</strong></li>
+        <li>Under the Security section, click <strong>"Security keys"</strong></li>
+        <li>You should see a list of tokens. Look for one associated with a web service, or ask your Moodle administrator to create one for you</li>
+        <li><strong>Copy the token</strong> (it will be a long string of letters and numbers like <code>a1b2c3d4e5f6...</code>)</li>
+    </ol>
+
+    <div class="warning">
+        <strong>Important:</strong> Treat your Moodle token like a password. Don't share it with anyone or post it online. It gives access to your Moodle account.
+    </div>
+
+    <!-- ================================================================ -->
+    <h2 id="configure"><span class="step-number">4</span> Configure Your Settings</h2>
+
+    <p>Now we'll create a settings file that tells the server how to connect to your Moodle site.</p>
+
+    <ol class="steps">
+        <li>In Terminal, make sure you're in the MoodleMCP folder:
+            <pre><code>cd ~/Documents/MoodleMCP-main</code></pre>
+        </li>
+        <li>Create your settings file by copying the example:
+            <pre><code>cp .env.example .env</code></pre>
+        </li>
+        <li>Open the settings file in TextEdit:
+            <pre><code>open -e .env</code></pre>
+        </li>
+    </ol>
+
+    <p>You'll see a file that looks like this. Change the highlighted values to match your setup:</p>
+
+    <pre><code># Your Moodle site URL (no trailing slash)
+MOODLE_DEV_URL=https://moodle-courses2527.wolfware.ncsu.edu
+
+# Your token from Step 3
+MOODLE_DEV_TOKEN=paste_your_token_here
+
+# Leave these as-is for safety
+MOODLE_DEV_COURSE_WHITELIST=7299
+MOODLE_PROD_ALLOW_WRITES=false</code></pre>
+
+    <p>You need to change <strong>two things</strong>:</p>
+    <ul>
+        <li><strong>MOODLE_DEV_URL</strong> &mdash; Replace with your Moodle site's URL. For NC State production courses, use:<br>
+            <code>https://moodle-courses2527.wolfware.ncsu.edu</code></li>
+        <li><strong>MOODLE_DEV_TOKEN</strong> &mdash; Replace <code>paste_your_token_here</code> with the token you copied in Step 3</li>
+    </ul>
+
+    <p>After editing, press <kbd>Cmd</kbd> + <kbd>S</kbd> to save, then close TextEdit.</p>
+
+    <div class="note">
+        <strong>Note:</strong> Make sure there are no extra spaces before or after your token. The line should look like:<br>
+        <code>MOODLE_DEV_TOKEN=a1b2c3d4e5f6g7h8i9j0...</code>
+    </div>
+
+    <!-- ================================================================ -->
+    <h2 id="connect"><span class="step-number">5</span> Connect to Gemini CLI</h2>
+
+    <p>Now we'll tell Gemini CLI where to find the Moodle server. In Terminal, run this command:</p>
+
+    <pre><code>gemini mcp add moodle -- uv --directory ~/Documents/MoodleMCP-main run python -m moodle_mcp.main</code></pre>
+
+    <div class="note">
+        <strong>Note:</strong> If you moved the folder somewhere other than Documents, or renamed it, update the path in the command above. The path must point to wherever your <code>MoodleMCP-main</code> folder is.
+    </div>
+
+    <p>You should see a confirmation message that the MCP server was added.</p>
+
+    <!-- ================================================================ -->
+    <h2 id="test"><span class="step-number">6</span> Test That It Works</h2>
+
+    <p>Let's make sure everything is connected properly.</p>
+
+    <ol class="steps">
+        <li>Start Gemini CLI by typing:
+            <pre><code>gemini</code></pre>
+        </li>
+        <li>Once the chat starts, type:
+            <pre><code>What Moodle courses am I enrolled in?</code></pre>
+        </li>
+        <li>Gemini may ask you to approve a "tool call" to Moodle. Type <strong>y</strong> and press Enter to allow it.</li>
+    </ol>
+
+    <p>If everything is set up correctly, you should see a list of your actual Moodle courses. Congratulations!</p>
+
+    <div class="tip">
+        <strong>Other things you can try asking:</strong>
+        <ul>
+            <li>"Show me my recent grades"</li>
+            <li>"What assignments are due this week?"</li>
+            <li>"Who is enrolled in [course name]?"</li>
+            <li>"Show me my unread messages"</li>
+        </ul>
+    </div>
+
+    <!-- ================================================================ -->
+    <h2>Troubleshooting</h2>
+
+    <h3>"Command not found: gemini"</h3>
+    <p>Node.js or Gemini CLI may not be installed properly. Try running <code>npm install -g @anthropic-ai/gemini-cli</code> again, then close and reopen Terminal.</p>
+
+    <h3>"Command not found: uv"</h3>
+    <p>The uv package manager isn't installed. Run the install command from Step 1 again, then close and reopen Terminal.</p>
+
+    <h3>"Invalid token" or "Access denied"</h3>
+    <ul>
+        <li>Open your <code>.env</code> file and double-check that the token is pasted correctly with no extra spaces</li>
+        <li>Make sure the Moodle URL is correct</li>
+        <li>Verify your token hasn't expired by checking Moodle's Security Keys page</li>
+    </ul>
+
+    <h3>"Module not found" error</h3>
+    <ul>
+        <li>Make sure you ran <code>uv sync</code> inside the MoodleMCP folder (Step 2)</li>
+        <li>Make sure the path in the <code>gemini mcp add</code> command points to the right folder</li>
+    </ul>
+
+    <h3>Gemini doesn't show Moodle tools</h3>
+    <ul>
+        <li>Quit Gemini CLI completely (<kbd>Ctrl</kbd> + <kbd>C</kbd>) and restart it</li>
+        <li>Run <code>gemini mcp list</code> to verify the Moodle server is registered</li>
+        <li>Make sure the folder path is correct: <code>ls ~/Documents/MoodleMCP-main/src/moodle_mcp/main.py</code> should show the file</li>
+    </ul>
+
+    <!-- ================================================================ -->
+    <h2>Quick Reference Card</h2>
+
+    <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+        <tr style="background: #f1f1f1;">
+            <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Start Gemini</td>
+            <td style="padding: 10px; border: 1px solid #ddd;"><code>gemini</code></td>
+        </tr>
+        <tr>
+            <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Auto-approve tool calls</td>
+            <td style="padding: 10px; border: 1px solid #ddd;"><code>gemini -y</code></td>
+        </tr>
+        <tr style="background: #f1f1f1;">
+            <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Resume last session</td>
+            <td style="padding: 10px; border: 1px solid #ddd;"><code>gemini --resume latest</code></td>
+        </tr>
+        <tr>
+            <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">List MCP servers</td>
+            <td style="padding: 10px; border: 1px solid #ddd;"><code>gemini mcp list</code></td>
+        </tr>
+        <tr style="background: #f1f1f1;">
+            <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Edit your settings</td>
+            <td style="padding: 10px; border: 1px solid #ddd;"><code>open -e ~/Documents/MoodleMCP-main/.env</code></td>
+        </tr>
+        <tr>
+            <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Your Moodle token page</td>
+            <td style="padding: 10px; border: 1px solid #ddd;"><em>Moodle &rarr; Profile &rarr; Preferences &rarr; Security keys</em></td>
+        </tr>
+    </table>
+
+    <div class="footer">
+        Moodle MCP Server &mdash; NC State University<br>
+        Questions? Contact Elizabeth Shamblin (leshamb2@ncsu.edu)<br>
+        <br>
+        <a href="https://github.com/leshamblin/MoodleMCP" target="_blank">github.com/leshamblin/MoodleMCP</a>
+    </div>
+</div>
+
+</body>
+</html>
