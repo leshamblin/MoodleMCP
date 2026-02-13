@@ -50,6 +50,13 @@ else
   exit 1
 fi
 
+# MoodleMCP requires prod fields even in dev mode (pydantic validation)
+export MOODLE_PROD_URL="${MOODLE_PROD_URL:-https://unused.example.com}"
+export MOODLE_PROD_TOKEN="${MOODLE_PROD_TOKEN:-unused}"
+
+# Ensure uv is on PATH (not available in non-interactive shells by default)
+export PATH="$HOME/.local/bin:$PATH"
+
 exec uv --directory "$PROJECT_DIR" run moodle-mcp
 ```
 
@@ -117,6 +124,14 @@ If you configure `.mcp.json` like this, the variables will **not** resolve:
 
 Claude Code resolves `${VAR}` from the shell environment at launch time, not from `.env` files. Use the wrapper script approach from Step 2 instead.
 
+### `uv: not found`
+
+Claude Code spawns MCP servers without loading shell profiles (`~/.bashrc`, `~/.profile`). If `uv` is installed in `~/.local/bin`, it won't be on PATH. The wrapper script above handles this with `export PATH="$HOME/.local/bin:$PATH"`.
+
+### `ValidationError: prod_url Field required`
+
+MoodleMCP's pydantic config requires `MOODLE_PROD_URL` and `MOODLE_PROD_TOKEN` even when `MOODLE_ENV=dev`. The wrapper script above sets placeholder values when they're not provided.
+
 ### Permission denied
 
 Make sure the wrapper script is executable:
@@ -131,6 +146,7 @@ chmod +x scripts/start-moodle-mcp.sh
 - **"Connection refused"** — Verify your Moodle URL is correct and accessible
 - **"Invalid token"** — Check the token in your `.env` file, ensure no extra whitespace
 - **Server starts but no tools appear** — Restart Claude Code after changing `.mcp.json`
+- **Server starts then crashes** — Run the wrapper script directly in a terminal to see the full error
 
 ---
 
