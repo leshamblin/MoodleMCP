@@ -98,9 +98,10 @@ MOODLE_DEV_COURSE_WHITELIST=7299
 MOODLE_PROD_ALLOW_WRITES=false
 ```
 
-### 5. Connect to Gemini CLI
+### 5. Connect to Your AI Tool
 
-See the [Gemini CLI MCP Setup Guide](Gemini_CLI_Setup_Guide.md) for detailed instructions on connecting this server to Gemini CLI.
+- **Gemini CLI:** See the [Gemini CLI Setup Guide](Gemini_CLI_Setup_Guide.md)
+- **Claude Code:** See the [Claude Code Setup Guide](Claude_Code_Setup_Guide.md)
 
 ---
 
@@ -163,7 +164,7 @@ Only courses in this list will allow write operations. This keeps you safe while
 - Python 3.10 or higher
 - [uv](https://docs.astral.sh/uv/) package manager
 - A Moodle account with Web Services access
-- Gemini CLI
+- An MCP-compatible AI tool ([Gemini CLI](https://geminicli.com), [Claude Code](https://docs.anthropic.com/en/docs/claude-code), etc.)
 
 ---
 
