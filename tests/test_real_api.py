@@ -37,7 +37,6 @@ from moodle_mcp.tools.users import (
 from moodle_mcp.tools.groups import (
     moodle_get_course_groups,
     moodle_get_group_members,
-    moodle_add_group_members
 )
 from moodle_mcp.tools.completion import (
     moodle_get_course_completion_status,
@@ -64,7 +63,6 @@ moodle_get_current_user = unwrap_tool(moodle_get_current_user)
 moodle_get_user_profile = unwrap_tool(moodle_get_user_profile)
 moodle_get_course_groups = unwrap_tool(moodle_get_course_groups)
 moodle_get_group_members = unwrap_tool(moodle_get_group_members)
-moodle_add_group_members = unwrap_tool(moodle_add_group_members)
 moodle_get_course_participants = unwrap_tool(moodle_get_course_participants)
 moodle_get_course_completion_status = unwrap_tool(moodle_get_course_completion_status)
 moodle_get_activities_completion_status = unwrap_tool(moodle_get_activities_completion_status)
@@ -359,108 +357,6 @@ class TestAllToolsBasic:
         failed = [r for r in results if r.startswith("❌")]
         assert len(failed) == 0, f"Some tools failed: {failed}"
 
-
-@pytest.mark.asyncio
-class TestDebugJustinCase:
-    """Debug test for adding Justin Case to Group 1."""
-
-    async def test_debug_add_justin_to_group1(self, ctx, moodle_client):
-        """Debug adding Justin Case to Group 1 in course 7299."""
-        print("\n" + "=" * 70)
-        print("DEBUGGING: Adding Justin Case to Group 1 in Course 7299")
-        print("=" * 70)
-
-        # Step 1: Get course participants
-        print("\n1. Getting course participants from course 7299...")
-        try:
-            participants_json = await moodle_get_course_participants(
-                course_id=7299, limit=100, offset=0, format='json', ctx=ctx
-            )
-            data = json.loads(participants_json)
-
-            print(f"   Found {data.get('total', 0)} total participants")
-            print(f"   Showing {data.get('showing', 0)} participants\n")
-
-            # Find Justin Case
-            justin = None
-            for p in data.get('participants', []):
-                fullname = p.get('fullname', '')
-                if 'justin' in fullname.lower() and 'case' in fullname.lower():
-                    justin = p
-                    print(f"   ✅ Found Justin Case:")
-                    print(f"      ID: {justin.get('id')}")
-                    print(f"      Full Name: {justin.get('fullname')}")
-                    print(f"      Email: {justin.get('email', 'N/A')}")
-                    break
-
-            if not justin:
-                print(f"   ⚠️  Justin Case not found. Here are the first 10 participants:")
-                for p in data.get('participants', [])[:10]:
-                    print(f"      - {p.get('fullname')} (ID: {p.get('id')})")
-                justin_id = None
-            else:
-                justin_id = justin.get('id')
-        except Exception as e:
-            print(f"   ❌ Error: {e}")
-            justin_id = None
-
-        # Step 2: Get groups
-        print("\n2. Getting groups in course 7299...")
-        try:
-            groups_json = await moodle_get_course_groups(course_id=7299, format='json', ctx=ctx)
-            groups = json.loads(groups_json)
-
-            print(f"   Found {len(groups)} groups:")
-            group1 = None
-            for g in groups:
-                name = g.get('name', '')
-                print(f"      - {name} (ID: {g.get('id')})")
-                if 'group 1' in name.lower():
-                    group1 = g
-
-            if group1:
-                print(f"\n   ✅ Found target group:")
-                print(f"      ID: {group1.get('id')}")
-                print(f"      Name: {group1.get('name')}")
-                group1_id = group1.get('id')
-            else:
-                print(f"\n   ⚠️  'Group 1' not found in groups")
-                group1_id = None
-        except Exception as e:
-            print(f"   ❌ Error: {e}")
-            group1_id = None
-
-        # Step 3: Try to add user to group
-        if justin_id and group1_id:
-            print(f"\n3. Attempting to add Justin Case (ID: {justin_id}) to Group 1 (ID: {group1_id})...")
-            try:
-                result = await moodle_add_group_members(
-                    course_id=7299,
-                    group_id=group1_id,
-                    user_ids=[justin_id],
-                    format='markdown',
-                    ctx=ctx
-                )
-                print(f"   ✅ SUCCESS! Result:\n")
-                print(result)
-            except Exception as e:
-                import traceback
-                print(f"   ❌ ERROR adding user to group:")
-                print(f"      Error Type: {type(e).__name__}")
-                print(f"      Error Message: {str(e)}")
-                print(f"\n   Full Traceback:")
-                print("      " + "\n      ".join(traceback.format_exc().split("\n")))
-                print(f"\n   Possible reasons:")
-                print(f"      1. User is already in the group")
-                print(f"      2. Insufficient permissions")
-                print(f"      3. Group or user doesn't exist in this course")
-                print(f"      4. API configuration issue")
-        else:
-            print(f"\n3. ❌ Cannot proceed:")
-            print(f"      Justin Case ID: {justin_id}")
-            print(f"      Group 1 ID: {group1_id}")
-
-        print("\n" + "=" * 70)
 
 
 if __name__ == "__main__":

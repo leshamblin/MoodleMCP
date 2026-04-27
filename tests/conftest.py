@@ -46,7 +46,7 @@ moodle_mcp.server.mcp = FastMCP(
 # Import all tool modules to register tools with the test mcp instance
 from moodle_mcp.tools import (
     site, courses, users, grades, assignments, messages,
-    calendar, forums, groups, enrollment, quiz, completion, badges
+    calendar, forums, groups, quiz, completion, badges
 )
 
 # Import test helpers for dynamic tool discovery

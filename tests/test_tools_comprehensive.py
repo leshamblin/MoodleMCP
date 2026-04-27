@@ -55,20 +55,26 @@ from moodle_mcp.tools.grades import (
     moodle_get_grade_items,
     moodle_get_gradebook_overview,
     moodle_get_student_grade_summary,
-    moodle_get_grade_report
+    moodle_get_grade_report,
+    moodle_create_grade_category,
 )
 from moodle_mcp.tools.assignments import (
     moodle_list_assignments,
     moodle_get_assignment_details,
     moodle_get_assignment_submissions,
-    moodle_get_user_assignments
+    moodle_get_user_assignments,
+    moodle_lock_assignment_submissions,
+    moodle_unlock_assignment_submissions,
+    moodle_revert_submissions_to_draft,
 )
 from moodle_mcp.tools.messages import (
     moodle_get_messages,
     moodle_get_conversations,
     moodle_get_unread_count,
     moodle_send_message,
-    moodle_delete_conversation
+    moodle_delete_conversation,
+    moodle_delete_message,
+    moodle_mark_notifications_read,
 )
 from moodle_mcp.tools.calendar import (
     moodle_get_calendar_events,
@@ -82,7 +88,9 @@ from moodle_mcp.tools.forums import (
     moodle_get_discussion_posts,
     moodle_search_forums,
     moodle_create_forum_discussion,
-    moodle_add_forum_post
+    moodle_add_forum_post,
+    moodle_delete_forum_post,
+    moodle_set_forum_subscription,
 )
 from moodle_mcp.tools.groups import (
     moodle_get_course_groups,
@@ -91,14 +99,6 @@ from moodle_mcp.tools.groups import (
     moodle_get_activity_allowed_groups,
     moodle_get_activity_groupmode,
     moodle_get_groups_for_selector,
-    moodle_create_groups,
-    moodle_add_group_members,
-    moodle_delete_group_members,
-    moodle_delete_groups
-)
-from moodle_mcp.tools.enrollment import (
-    moodle_enrol_users,
-    moodle_unenrol_users
 )
 from moodle_mcp.tools.quiz import (
     moodle_get_quizzes,
@@ -131,12 +131,16 @@ moodle_get_grade_items = unwrap_tool(moodle_get_grade_items)
 moodle_get_gradebook_overview = unwrap_tool(moodle_get_gradebook_overview)
 moodle_get_student_grade_summary = unwrap_tool(moodle_get_student_grade_summary)
 moodle_get_grade_report = unwrap_tool(moodle_get_grade_report)
+moodle_create_grade_category = unwrap_tool(moodle_create_grade_category)
 
 # Unwrap all tools for testing - Assignments
 moodle_list_assignments = unwrap_tool(moodle_list_assignments)
 moodle_get_assignment_details = unwrap_tool(moodle_get_assignment_details)
 moodle_get_assignment_submissions = unwrap_tool(moodle_get_assignment_submissions)
 moodle_get_user_assignments = unwrap_tool(moodle_get_user_assignments)
+moodle_lock_assignment_submissions = unwrap_tool(moodle_lock_assignment_submissions)
+moodle_unlock_assignment_submissions = unwrap_tool(moodle_unlock_assignment_submissions)
+moodle_revert_submissions_to_draft = unwrap_tool(moodle_revert_submissions_to_draft)
 
 # Unwrap all tools for testing - Messages
 moodle_get_messages = unwrap_tool(moodle_get_messages)
@@ -144,6 +148,8 @@ moodle_get_conversations = unwrap_tool(moodle_get_conversations)
 moodle_get_unread_count = unwrap_tool(moodle_get_unread_count)
 moodle_send_message = unwrap_tool(moodle_send_message)
 moodle_delete_conversation = unwrap_tool(moodle_delete_conversation)
+moodle_delete_message = unwrap_tool(moodle_delete_message)
+moodle_mark_notifications_read = unwrap_tool(moodle_mark_notifications_read)
 
 # Unwrap all tools for testing - Calendar
 moodle_get_calendar_events = unwrap_tool(moodle_get_calendar_events)
@@ -158,6 +164,8 @@ moodle_get_discussion_posts = unwrap_tool(moodle_get_discussion_posts)
 moodle_search_forums = unwrap_tool(moodle_search_forums)
 moodle_create_forum_discussion = unwrap_tool(moodle_create_forum_discussion)
 moodle_add_forum_post = unwrap_tool(moodle_add_forum_post)
+moodle_delete_forum_post = unwrap_tool(moodle_delete_forum_post)
+moodle_set_forum_subscription = unwrap_tool(moodle_set_forum_subscription)
 
 # Unwrap all tools for testing - Groups
 moodle_get_course_groups = unwrap_tool(moodle_get_course_groups)
@@ -166,14 +174,6 @@ moodle_get_course_user_groups = unwrap_tool(moodle_get_course_user_groups)
 moodle_get_activity_allowed_groups = unwrap_tool(moodle_get_activity_allowed_groups)
 moodle_get_activity_groupmode = unwrap_tool(moodle_get_activity_groupmode)
 moodle_get_groups_for_selector = unwrap_tool(moodle_get_groups_for_selector)
-moodle_create_groups = unwrap_tool(moodle_create_groups)
-moodle_add_group_members = unwrap_tool(moodle_add_group_members)
-moodle_delete_group_members = unwrap_tool(moodle_delete_group_members)
-moodle_delete_groups = unwrap_tool(moodle_delete_groups)
-
-# Unwrap all tools for testing - Enrollment
-moodle_enrol_users = unwrap_tool(moodle_enrol_users)
-moodle_unenrol_users = unwrap_tool(moodle_unenrol_users)
 
 # Unwrap all tools for testing - Quiz
 moodle_get_quizzes = unwrap_tool(moodle_get_quizzes)
@@ -446,30 +446,6 @@ class TestGroupTools:
 # ENROLLMENT TOOLS TESTS (2 tools - both WRITE)
 # =============================================================================
 
-@pytest.mark.asyncio
-class TestEnrollmentTools:
-    """Test enrollment tools (WRITE operations)."""
-
-    async def test_moodle_enrol_users_safety(self, ctx):
-        """Test that enrol_users enforces write safety on non-whitelisted course."""
-        with pytest.raises(ToolError):
-            await moodle_enrol_users(
-                course_id=99999,  # Non-whitelisted course
-                user_ids=[1],
-                role_id=5,
-                ctx=ctx
-            )
-
-    async def test_moodle_unenrol_users_safety(self, ctx):
-        """Test that unenrol_users enforces write safety on non-whitelisted course."""
-        with pytest.raises(ToolError):
-            await moodle_unenrol_users(
-                course_id=99999,  # Non-whitelisted course
-                user_ids=[1],
-                ctx=ctx
-            )
-
-
 # =============================================================================
 # QUIZ TOOLS TESTS (5 tools: 2 READ + 3 WRITE)
 # =============================================================================
@@ -569,15 +545,45 @@ class TestWriteSafety:
                 ctx=ctx
             )
 
-    async def test_group_delete_safety(self, ctx):
-        """Test group deletion safety."""
+    async def test_lock_assignment_submissions_safety(self, ctx):
+        """Test lock_assignment_submissions enforces whitelist."""
         with pytest.raises(ToolError):
-            await moodle_delete_groups(
-                course_id=99999,  # Non-whitelisted
-                group_ids=[1],
-                ctx=ctx
+            await moodle_lock_assignment_submissions(
+                course_id=99999, assignment_id=1, user_ids=[1], ctx=ctx
             )
 
+    async def test_unlock_assignment_submissions_safety(self, ctx):
+        """Test unlock_assignment_submissions enforces whitelist."""
+        with pytest.raises(ToolError):
+            await moodle_unlock_assignment_submissions(
+                course_id=99999, assignment_id=1, user_ids=[1], ctx=ctx
+            )
+
+    async def test_revert_submissions_to_draft_safety(self, ctx):
+        """Test revert_submissions_to_draft enforces whitelist."""
+        with pytest.raises(ToolError):
+            await moodle_revert_submissions_to_draft(
+                course_id=99999, assignment_id=1, user_ids=[1], ctx=ctx
+            )
+
+    async def test_delete_forum_post_safety(self, ctx):
+        """Test delete_forum_post enforces whitelist."""
+        with pytest.raises(ToolError):
+            await moodle_delete_forum_post(course_id=99999, post_id=1, ctx=ctx)
+
+    async def test_set_forum_subscription_safety(self, ctx):
+        """Test set_forum_subscription enforces whitelist."""
+        with pytest.raises(ToolError):
+            await moodle_set_forum_subscription(
+                course_id=99999, forum_id=1, subscribe=True, ctx=ctx
+            )
+
+    async def test_create_grade_category_safety(self, ctx):
+        """Test create_grade_category enforces whitelist."""
+        with pytest.raises(ToolError):
+            await moodle_create_grade_category(
+                course_id=99999, name="Test", ctx=ctx
+            )
 
 # =============================================================================
 # COMPREHENSIVE TOOL VALIDATION
@@ -672,10 +678,10 @@ class TestAllToolsValidation:
 
 @pytest.mark.asyncio
 class TestToolCount:
-    """Validate that all 69 tools are properly registered."""
+    """Validate that all 70 tools are properly registered."""
 
     async def test_total_tool_count(self):
-        """Verify server has all 69 tools registered."""
+        """Verify server has all 70 tools registered."""
         from moodle_mcp.server import mcp
 
         # Count tools
@@ -717,7 +723,7 @@ class TestToolCount:
 
             print(f"\n{'='*80}")
 
-        assert tool_count == 69, f"Expected 69 tools, got {tool_count}"
+        assert tool_count == 70, f"Expected 70 tools, got {tool_count}"
 
 
 if __name__ == "__main__":
