@@ -407,3 +407,61 @@ async def moodle_add_forum_post(
         return format_response(response_data, "Forum Reply Posted", format)
     except Exception as e:
         raise Exception(f"Failed to add forum post: {str(e)}")
+
+
+@mcp.tool(
+    name="moodle_delete_forum_post",
+    description="Delete a forum post (or whole discussion if it's the root post). REQUIRED: course_id (integer, must be whitelisted), post_id (integer). Example: course_id=7299, post_id=194867.",
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": True,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
+)
+@handle_moodle_errors
+@require_write_permission('course_id')
+async def moodle_delete_forum_post(
+    course_id: int = Field(description="Course ID (must be whitelisted)", gt=0),
+    post_id: int = Field(description="Post ID to delete", gt=0),
+    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN),
+    ctx: Context = None,
+) -> str:
+    moodle = get_moodle_client(ctx)
+    await moodle._make_request('mod_forum_delete_post', {'postid': post_id})
+    return format_response(
+        {'post_id': post_id, 'course_id': course_id, 'deleted': True},
+        "Forum Post Deleted",
+        format,
+    )
+
+
+@mcp.tool(
+    name="moodle_set_forum_subscription",
+    description="Subscribe or unsubscribe the current user from a forum. REQUIRED: course_id (integer, must be whitelisted), forum_id (integer), subscribe (boolean - true to subscribe, false to unsubscribe). Example: course_id=7299, forum_id=73601, subscribe=true.",
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
+)
+@handle_moodle_errors
+@require_write_permission('course_id')
+async def moodle_set_forum_subscription(
+    course_id: int = Field(description="Course ID (must be whitelisted)", gt=0),
+    forum_id: int = Field(description="Forum ID", gt=0),
+    subscribe: bool = Field(description="True to subscribe, False to unsubscribe"),
+    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN),
+    ctx: Context = None,
+) -> str:
+    moodle = get_moodle_client(ctx)
+    result = await moodle._make_request(
+        'mod_forum_set_subscription_state',
+        {'forumid': forum_id, 'targetstate': 1 if subscribe else 0},
+    )
+    return format_response(
+        {'forum_id': forum_id, 'subscribed': subscribe, 'result': result},
+        "Forum Subscription Updated",
+        format,
+    )

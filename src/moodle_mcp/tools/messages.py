@@ -311,3 +311,64 @@ async def moodle_delete_conversation(
         return format_response(response_data, "Conversation Deleted", format)
     except Exception as e:
         raise Exception(f"Failed to delete conversation: {str(e)}")
+
+
+@mcp.tool(
+    name="moodle_delete_message",
+    description="Delete a single message from your inbox (does not delete for the other party). REQUIRED: message_id (integer). Optional: user_id (integer, defaults to current user). Example: message_id=78320.",
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": True,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
+)
+@handle_moodle_errors
+async def moodle_delete_message(
+    message_id: int = Field(description="Message ID to delete", gt=0),
+    user_id: int | None = Field(default=None, description="User ID (defaults to current user)"),
+    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN),
+    ctx: Context = None,
+) -> str:
+    from ..utils.api_helpers import resolve_user_id
+    moodle = get_moodle_client(ctx)
+    user_id = await resolve_user_id(moodle, user_id)
+    result = await moodle._make_request(
+        'core_message_delete_message',
+        {'messageid': message_id, 'userid': user_id},
+    )
+    return format_response(
+        {'message_id': message_id, 'user_id': user_id, 'result': result},
+        "Message Deleted",
+        format,
+    )
+
+
+@mcp.tool(
+    name="moodle_mark_notifications_read",
+    description="Mark all notifications as read for the current (or specified) user. Optional: user_id (integer, defaults to current user). Example: no parameters needed.",
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
+)
+@handle_moodle_errors
+async def moodle_mark_notifications_read(
+    user_id: int | None = Field(default=None, description="User ID (defaults to current user)"),
+    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN),
+    ctx: Context = None,
+) -> str:
+    from ..utils.api_helpers import resolve_user_id
+    moodle = get_moodle_client(ctx)
+    user_id = await resolve_user_id(moodle, user_id)
+    await moodle._make_request(
+        'core_message_mark_all_notifications_as_read',
+        {'useridto': user_id},
+    )
+    return format_response(
+        {'user_id': user_id, 'success': True},
+        "Notifications Marked Read",
+        format,
+    )

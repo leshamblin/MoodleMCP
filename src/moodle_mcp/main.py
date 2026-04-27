@@ -92,7 +92,7 @@ moodle_mcp.server.mcp = mcp
 
 # Import all tool modules AFTER setting mcp instance
 # These imports have side effects - they register tools with the server
-from moodle_mcp.tools import site, courses, users, grades, assignments, messages, calendar, forums, groups, enrollment, quiz, completion, badges
+from moodle_mcp.tools import site, courses, users, grades, assignments, messages, calendar, forums, groups, quiz, completion, badges
 
 def main():
     """Entry point for running the server."""

@@ -404,3 +404,96 @@ async def moodle_submit_assignment(
         return format_response(response_data, "Assignment Submitted for Grading", format)
     except Exception as e:
         raise Exception(f"Failed to submit assignment: {str(e)}")
+
+
+@mcp.tool(
+    name="moodle_lock_assignment_submissions",
+    description="Lock student submissions on an assignment so they can no longer be edited. REQUIRED: course_id (integer, must be whitelisted), assignment_id (integer), user_ids (array of integers). Example: course_id=7299, assignment_id=12345, user_ids=[247714].",
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
+)
+@handle_moodle_errors
+@require_write_permission('course_id')
+async def moodle_lock_assignment_submissions(
+    course_id: int = Field(description="Course ID (must be whitelisted)", gt=0),
+    assignment_id: int = Field(description="Assignment ID", gt=0),
+    user_ids: list[int] = Field(description="User IDs whose submissions to lock", min_length=1),
+    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN),
+    ctx: Context = None,
+) -> str:
+    moodle = get_moodle_client(ctx)
+    await moodle._make_request(
+        'mod_assign_lock_submissions',
+        {'assignmentid': assignment_id, 'userids': user_ids},
+    )
+    return format_response(
+        {'assignment_id': assignment_id, 'locked_user_ids': user_ids, 'success': True},
+        "Submissions Locked",
+        format,
+    )
+
+
+@mcp.tool(
+    name="moodle_unlock_assignment_submissions",
+    description="Unlock previously-locked student submissions on an assignment. REQUIRED: course_id (integer, must be whitelisted), assignment_id (integer), user_ids (array of integers). Example: course_id=7299, assignment_id=12345, user_ids=[247714].",
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
+)
+@handle_moodle_errors
+@require_write_permission('course_id')
+async def moodle_unlock_assignment_submissions(
+    course_id: int = Field(description="Course ID (must be whitelisted)", gt=0),
+    assignment_id: int = Field(description="Assignment ID", gt=0),
+    user_ids: list[int] = Field(description="User IDs whose submissions to unlock", min_length=1),
+    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN),
+    ctx: Context = None,
+) -> str:
+    moodle = get_moodle_client(ctx)
+    await moodle._make_request(
+        'mod_assign_unlock_submissions',
+        {'assignmentid': assignment_id, 'userids': user_ids},
+    )
+    return format_response(
+        {'assignment_id': assignment_id, 'unlocked_user_ids': user_ids, 'success': True},
+        "Submissions Unlocked",
+        format,
+    )
+
+
+@mcp.tool(
+    name="moodle_revert_submissions_to_draft",
+    description="Revert student submissions back to draft so they can edit and resubmit. REQUIRED: course_id (integer, must be whitelisted), assignment_id (integer), user_ids (array of integers). Example: course_id=7299, assignment_id=12345, user_ids=[247714].",
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    },
+)
+@handle_moodle_errors
+@require_write_permission('course_id')
+async def moodle_revert_submissions_to_draft(
+    course_id: int = Field(description="Course ID (must be whitelisted)", gt=0),
+    assignment_id: int = Field(description="Assignment ID", gt=0),
+    user_ids: list[int] = Field(description="User IDs whose submissions to revert", min_length=1),
+    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN),
+    ctx: Context = None,
+) -> str:
+    moodle = get_moodle_client(ctx)
+    await moodle._make_request(
+        'mod_assign_revert_submissions_to_draft',
+        {'assignmentid': assignment_id, 'userids': user_ids},
+    )
+    return format_response(
+        {'assignment_id': assignment_id, 'reverted_user_ids': user_ids, 'success': True},
+        "Submissions Reverted to Draft",
+        format,
+    )

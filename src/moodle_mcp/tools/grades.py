@@ -449,81 +449,34 @@ async def moodle_save_assignment_grade(
     except Exception as e:
         raise Exception(f"Failed to save assignment grade: {str(e)}")
 
+
+
 @mcp.tool(
-    name="moodle_update_grades",
-    description="Update grades in the gradebook. REQUIRED: course_id (integer), item_name (string), grades (array of objects with userid and grade). WRITE OPERATION - only works on whitelisted courses (default: course 7299). Example: course_id=7299, item_name='Quiz 1', grades=[{'userid':123,'grade':85},{'userid':456,'grade':92}].",
+    name="moodle_create_grade_category",
+    description="Create a new grade category in the gradebook. REQUIRED: course_id (integer, must be whitelisted), name (string). Example: course_id=7299, name='Quizzes'.",
     annotations={
         "readOnlyHint": False,
         "destructiveHint": False,
-        "idempotentHint": True,  # Safe to update grades
-        "openWorldHint": False
-    }
+        "idempotentHint": False,
+        "openWorldHint": False,
+    },
 )
 @handle_moodle_errors
 @require_write_permission('course_id')
-async def moodle_update_grades(
+async def moodle_create_grade_category(
     course_id: int = Field(description="Course ID (must be whitelisted)", gt=0),
-    item_name: str = Field(description="Grade item name", min_length=1),
-    grades: list[dict] = Field(description="List of {userid: int, grade: float} objects", min_length=1),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
+    name: str = Field(description="Grade category name", min_length=1),
+    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN),
+    ctx: Context = None,
 ) -> str:
-    """
-    Update grades in the gradebook for multiple users.
-
-    SAFETY: This write operation is only allowed on whitelisted courses.
-    Default whitelist: [7299] (Elizabeth's Moodle Playground)
-
-    Updates grades for a specific grade item for multiple users.
-
-    Args:
-        course_id: Course ID (must be in whitelist!)
-        item_name: Grade item name (e.g., "Quiz 1", "Assignment 2")
-        grades: List of dictionaries with 'userid' and 'grade' keys
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        Confirmation of updated grades
-
-    Raises:
-        WriteOperationError: If course_id is not whitelisted
-
-    Example use cases:
-        - "Update quiz grades for multiple students"
-        - "Save grades for Quiz 1"
-        - "Batch update assignment grades"
-    """
     moodle = get_moodle_client(ctx)
-
-    try:
-        # Prepare grades data
-        params = {
-            'source': 'moodle_mcp',
-            'courseid': course_id,
-            'component': 'mod_assign',  # Component
-            'activityname': item_name
-        }
-
-        # Add each grade
-        for idx, grade_data in enumerate(grades):
-            user_id = grade_data.get('userid')
-            grade_value = grade_data.get('grade')
-            params[f'grades[{idx}][userid]'] = user_id
-            params[f'grades[{idx}][grade]'] = grade_value
-
-        result = await moodle._make_request(
-            'core_grades_update_grades',
-            params
-        )
-
-        response_data = {
-            'course_id': course_id,
-            'item_name': item_name,
-            'grades_updated': len(grades),
-            'success': True
-        }
-
-        return format_response(response_data, "Grades Updated", format)
-    except Exception as e:
-        raise Exception(f"Failed to update grades: {str(e)}")
+    result = await moodle._make_request(
+        'core_grades_create_gradecategory',
+        {'courseid': course_id, 'fullname': name, 'options': []},
+    )
+    cat_id = result.get('categoryid') if isinstance(result, dict) else None
+    return format_response(
+        {'course_id': course_id, 'name': name, 'category_id': cat_id},
+        "Grade Category Created",
+        format,
+    )
