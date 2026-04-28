@@ -5,9 +5,8 @@
 This is the **Moodle MCP Server** - a comprehensive Model Context Protocol server for Moodle LMS integration with enterprise-grade safety features.
 
 ### Key Facts
-- **Location:** `/Users/leshamb2/Documents/Programming/MoodleMCP`
-- **Status:** Production-ready with 46 tools (40 READ + 6 WRITE)
-- **Coverage:** 28% of Moodle Web Services API (167 total functions available)
+- **Location:** `/Users/wjs/Programming/MoodleAPI`
+- **Status:** Production-ready with 70 tools
 - **Primary User:** Elizabeth Shamblin (leshamb2@ncsu.edu)
 - **Development Course:** Course 7299 "Elizabeth's Moodle Playground"
 
@@ -15,22 +14,36 @@ This is the **Moodle MCP Server** - a comprehensive Model Context Protocol serve
 
 **WRITE OPERATIONS ARE PROTECTED:**
 - Default whitelist: **ONLY course 7299** allows write operations in DEV
-- Production: **ALL writes BLOCKED** by default
-- Decorator: `@require_write_permission('course_id')` enforces automatically
+- Production: **ALL writes BLOCKED** by default (`MOODLE_PROD_ALLOW_WRITES=false`)
+- Decorator: `@require_write_permission('course_id')` enforces automatically on
+  course-scoped writes
 - DO NOT bypass safety mechanisms
 
-### Current Implementation
+**Capability boundary at the Moodle role level (NOT enforceable by this MCP):**
+The WS token's role does NOT grant the following, regardless of whitelist:
+user create/update/delete, course create/update/delete/duplicate, course-category
+mgmt, manual enrol/unenrol, group create/delete, group-member add/remove,
+gradebook updates via `core_grades_update_grades`, completion override.
+Tools wrapping these were removed in favor of working alternatives (e.g., grade
+via `mod_assign_save_grade` instead of `core_grades_update_grades`).
 
-**46 Tools Organized by Category:**
-1. **Site** (3) - Site info, connection test, available functions
-2. **Courses** (7 READ) - List, search, details, contents, users, categories
-3. **Users** (5 READ) - Profiles, search, preferences, participants
-4. **Grades** (6 READ) - User grades, course grades, items, summaries
-5. **Assignments** (4 READ) - List, details, submissions, user assignments
-6. **Messages** (3 READ + 2 WRITE) - Conversations, send, delete
-7. **Calendar** (3 READ + 2 WRITE) - Events, create, delete
-8. **Forums** (3 READ + 2 WRITE) - Discussions, create, reply
-9. **Groups** (6 READ) - Groups, groupings, members, access
+### Tool inventory (70 total)
+
+Working write surface (course-scoped, whitelist-gated):
+- **Assignments**: save_grade, save_grades-batch, save_submission, submit_for_grading,
+  lock/unlock submissions, revert to draft
+- **Forums**: add_discussion, add_post (reply), delete_post, set_subscription
+- **Calendar**: create_event, delete_event
+- **Quiz** (student-side): start_attempt, save_answers, submit
+- **Grades**: create_grade_category
+- **Completion**: mark self-completed (course), update activity completion
+
+Working write surface (user-scoped, no whitelist):
+- **Messages**: send_message, delete_message, delete_conversation,
+  mark_notifications_read
+
+Read tools cover all major surfaces (site, courses, users, grades, assignments,
+messages, calendar, forums, groups, quiz, completion, badges).
 
 ### Environment Setup
 
