@@ -15,12 +15,25 @@ from ..core.exceptions import MoodleNotFoundError
 
 
 @dataclass
-class UserGrades:
-    """Grades for a single user within a course."""
+class CourseUserGrades:
+    """A user's grade items within one course."""
 
     course_id: int
-    user_id: int
+    course_name: str
     grade_items: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
+class UserGrades:
+    """A user's grades.
+
+    When a single course is requested, ``courses`` holds one entry. When no
+    course is given, it holds one entry per enrolled course (aggregated view).
+    """
+
+    user_id: int
+    courses: list[CourseUserGrades] = field(default_factory=list)
+    count: int = 0
 
 
 @dataclass
@@ -61,7 +74,8 @@ class GradeCategories:
     """Grade category structure for a course."""
 
     course_id: int
-    grade_items: list[dict[str, Any]] = field(default_factory=list)
+    categories: list[dict[str, Any]] = field(default_factory=list)
+    count: int = 0
 
 
 def _grade_items(data: Any) -> list[dict[str, Any]]:
@@ -73,10 +87,13 @@ def _grade_items(data: Any) -> list[dict[str, Any]]:
 
 @mcp.tool(
     name="moodle_get_user_grades",
-    description="""Get all grades for a specific user in a course.
+    description="""Get a user's grades, optionally across ALL their courses.
 
-Returns grade items with scores, percentages, and feedback.
-Useful for checking student progress and performance.""",
+Returns grade items (scores, percentages, feedback) grouped by course.
+- Omit `course` to aggregate grades across every course the user is enrolled
+  in (useful for "what are all my grades?").
+- Pass `course` to get just that course.
+Omit `user` for the current user.""",
     tags={"read"},
     annotations=ToolAnnotations(
         readOnlyHint=True,
@@ -87,29 +104,55 @@ Useful for checking student progress and performance.""",
 )
 @handle_moodle_errors
 async def moodle_get_user_grades(
-    course: Annotated[
-        int | str,
-        Field(description="Course ID (int), shortname, or fullname"),
-    ],
     user: Annotated[
-        int | str,
-        Field(description="User ID (int), username, or email address"),
-    ],
+        int | str | None,
+        Field(description="User ID (int), username, or email; omit for current user"),
+    ] = None,
+    course: Annotated[
+        int | str | None,
+        Field(description="Optional course (ID, shortname, or fullname); omit for all enrolled courses"),
+    ] = None,
     ctx: Context = None,
 ) -> UserGrades:
-    """Get all grades for a user in a course."""
+    """Get a user's grades, for one course or aggregated across all courses."""
     moodle = get_moodle_client(ctx)
     resolver = get_resolver(ctx)
 
-    cid = await resolver.course_id(course)
     uid = await resolver.user_id(user)
 
-    data = await moodle.call(
-        "gradereport_user_get_grade_items",
-        {"courseid": cid, "userid": uid},
-    )
+    # Determine the set of courses to report on.
+    if course is not None:
+        cid = await resolver.course_id(course)
+        targets = [{"id": cid, "fullname": str(course)}]
+    else:
+        enrolled = await moodle.call(
+            "core_enrol_get_users_courses", {"userid": uid}
+        )
+        targets = enrolled or []
 
-    return UserGrades(course_id=cid, user_id=uid, grade_items=_grade_items(data))
+    courses: list[CourseUserGrades] = []
+    for c in targets:
+        cid = c.get("id")
+        try:
+            data = await moodle.call(
+                "gradereport_user_get_grade_items",
+                {"courseid": cid, "userid": uid},
+            )
+        except Exception:
+            # Skip courses where this user's grades can't be retrieved
+            # (e.g. permissions); keep aggregating the rest.
+            continue
+        items = _grade_items(data)
+        if items or course is not None:
+            courses.append(
+                CourseUserGrades(
+                    course_id=cid,
+                    course_name=c.get("fullname", ""),
+                    grade_items=items,
+                )
+            )
+
+    return UserGrades(user_id=uid, courses=courses, count=len(courses))
 
 
 @mcp.tool(
@@ -293,19 +336,33 @@ async def moodle_get_grade_categories(
     ],
     ctx: Context = None,
 ) -> GradeCategories:
-    """Get grade categories for a course."""
+    """Get the grade categories (not individual items) for a course."""
     moodle = get_moodle_client(ctx)
     resolver = get_resolver(ctx)
 
     cid = await resolver.course_id(course)
 
-    # Uses the grade items endpoint, which carries category info.
+    # gradereport_user_get_grade_items returns usergrades[].gradeitems[],
+    # each tagged with an itemtype. Keep only the category rows so the result
+    # is genuinely the category structure, deduped across users.
     data = await moodle.call(
         "gradereport_user_get_grade_items",
         {"courseid": cid},
     )
 
-    return GradeCategories(course_id=cid, grade_items=_grade_items(data))
+    seen: set = set()
+    categories: list[dict[str, Any]] = []
+    for usergrade in _grade_items(data):
+        for item in usergrade.get("gradeitems", []) or []:
+            if item.get("itemtype") != "category":
+                continue
+            key = item.get("id")
+            if key in seen:
+                continue
+            seen.add(key)
+            categories.append(item)
+
+    return GradeCategories(course_id=cid, categories=categories, count=len(categories))
 
 
 @mcp.tool(
