@@ -2,139 +2,198 @@
 User management tools - READ ONLY.
 """
 
-from pydantic import Field
+from dataclasses import dataclass, field
+from typing import Annotated
+
 from fastmcp import Context
+from mcp.types import ToolAnnotations
+from pydantic import Field
 
 from ..server import mcp
 from ..utils.error_handling import handle_moodle_errors
-from ..utils.api_helpers import get_moodle_client, resolve_user_id
-from ..utils.formatting import format_response
-from ..models.base import ResponseFormat
-from ..models.users import User
+from ..utils.api_helpers import get_moodle_client, get_resolver
+
+
+# --------------------------------------------------------------------------- #
+# Local structured-output models (FastMCP 3.x).
+# Kept here (not in models/results.py) since they're specific to user tools.
+# --------------------------------------------------------------------------- #
+@dataclass
+class UserProfile:
+    id: int
+    username: str | None = None
+    firstname: str | None = None
+    lastname: str | None = None
+    fullname: str | None = None
+    email: str | None = None
+    department: str | None = None
+    institution: str | None = None
+    city: str | None = None
+    country: str | None = None
+    profileimageurl: str | None = None
+    firstaccess: int | None = None
+    lastaccess: int | None = None
+    description: str | None = None
+
+
+@dataclass
+class UserList:
+    users: list[UserProfile] = field(default_factory=list)
+    count: int = 0
+
+
+@dataclass
+class UserPreferenceItem:
+    name: str
+    value: str | None = None
+
+
+@dataclass
+class UserPreferencesResult:
+    userid: int
+    preferences: list[UserPreferenceItem] = field(default_factory=list)
+    count: int = 0
+
+
+@dataclass
+class Participant:
+    id: int
+    fullname: str | None = None
+    email: str | None = None
+    roles: list[str] = field(default_factory=list)
+
+
+@dataclass
+class CourseParticipants:
+    course_id: int
+    participants: list[Participant] = field(default_factory=list)
+    total: int = 0
+    count: int = 0
+
+
+def _user_profile(data: dict) -> UserProfile:
+    """Build a UserProfile from a raw Moodle user dict."""
+    return UserProfile(
+        id=data.get("id", 0),
+        username=data.get("username"),
+        firstname=data.get("firstname"),
+        lastname=data.get("lastname"),
+        fullname=data.get("fullname"),
+        email=data.get("email"),
+        department=data.get("department"),
+        institution=data.get("institution"),
+        city=data.get("city"),
+        country=data.get("country"),
+        profileimageurl=data.get("profileimageurl"),
+        firstaccess=data.get("firstaccess"),
+        lastaccess=data.get("lastaccess"),
+        description=data.get("description"),
+    )
+
 
 @mcp.tool(
     name="moodle_get_current_user",
-    description="Get profile for currently authenticated user including user ID. NO PARAMETERS REQUIRED. Returns userid field (e.g., 624) needed for many other tools. Use this FIRST to discover your user_id. Optional: format (default='markdown').",
-    annotations={
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True
-    }
+    description=(
+        "Get the profile of the currently authenticated user, including the "
+        "user id needed by many other tools. No parameters. Use this FIRST to "
+        "discover your own user id."
+    ),
+    tags={"read"},
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False,
+        idempotentHint=True, openWorldHint=True,
+    ),
 )
 @handle_moodle_errors
-async def moodle_get_current_user(
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+async def moodle_get_current_user(ctx: Context = None) -> UserProfile:
     """
-    Get detailed profile information for the currently authenticated user.
-
-    Returns comprehensive user profile including ID, name, email, institution, and preferences.
-
-    Args:
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        Current user profile information
+    Get the profile of the currently authenticated (token) user.
 
     Example use cases:
         - "Who am I logged in as?"
-        - "Show my user profile"
-        - "What is my user ID?"
+        - "What is my user id?"
     """
     moodle = get_moodle_client(ctx)
+    info = await moodle.get_site_info()
+    return UserProfile(
+        id=info.get("userid", 0),
+        username=info.get("username"),
+        fullname=info.get("fullname"),
+        email=info.get("useremail"),
+    )
 
-    # Get site info which includes current user details
-    site_info = await moodle.get_site_info()
-
-    return format_response(site_info, "Current User Profile", format)
 
 @mcp.tool(
     name="moodle_get_user_profile",
-    description="Get detailed user profile information. REQUIRED: user_id (integer). Example: user_id=624. Use moodle_get_current_user or moodle_search_users to get user_id.",
-    annotations={
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True
-    }
+    description=(
+        "Get a detailed profile for a user. Accepts a numeric user id, a "
+        "username, or an email (omit to use the current user). "
+        "Example: user='jdoe' or user=624."
+    ),
+    tags={"read"},
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False,
+        idempotentHint=True, openWorldHint=True,
+    ),
 )
 @handle_moodle_errors
 async def moodle_get_user_profile(
-    user_id: int = Field(description="User ID to retrieve", gt=0),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    user: Annotated[
+        int | str | None,
+        Field(description="User id, username, or email; omit for current user"),
+    ] = None,
+    ctx: Context = None,
+) -> UserProfile:
     """
-    Get detailed profile for a specific user.
-
-    Retrieves user information including name, email, profile image, department, institution, and more.
-
-    Args:
-        user_id: User ID
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        User profile information
+    Get a detailed profile for a specific user.
 
     Example use cases:
         - "Get profile for user 123"
-        - "Show details for user ID 45"
-        - "Who is user 67?"
+        - "Who is jdoe@example.com?"
     """
     moodle = get_moodle_client(ctx)
+    resolver = get_resolver(ctx)
+    uid = await resolver.user_id(user)
 
-    # Get user by ID
-    users_data = await moodle._make_request(
-        'core_user_get_users_by_field',
-        {'field': 'id', 'values[0]': user_id}
+    users_data = await moodle.call(
+        "core_user_get_users_by_field", {"field": "id", "values": [uid]}
     )
-
     if not users_data:
-        return f"User {user_id} not found."
+        from ..core.exceptions import MoodleNotFoundError
+        raise MoodleNotFoundError(f"User {uid} not found.")
 
-    user = User(**users_data[0])
+    return _user_profile(users_data[0])
 
-    return format_response(user.model_dump(), f"User Profile: {user.fullname or user.username}", format)
 
 @mcp.tool(
     name="moodle_search_users",
-    description="Search for users by name or email. REQUIRED: search_query (string, min 2 chars). Optional: limit (1-100, default=20). Example: search_query='Smith'. Returns user IDs.",
-    annotations={
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True
-    }
+    description=(
+        "Search for users by name or email. Provide at least 2 characters. "
+        "Example: search_query='Smith' or search_query='jdoe@example.com'. "
+        "Returns matching users with their ids."
+    ),
+    tags={"read"},
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False,
+        idempotentHint=True, openWorldHint=True,
+    ),
 )
 @handle_moodle_errors
 async def moodle_search_users(
-    search_query: str = Field(description="Search term (name or email)", min_length=2),
-    limit: int = Field(default=20, description="Maximum results", ge=1, le=100),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    search_query: Annotated[
+        str, Field(description="Search term (name or email)", min_length=2)
+    ],
+    limit: Annotated[
+        int, Field(description="Maximum results", ge=1, le=100)
+    ] = 20,
+    ctx: Context = None,
+) -> UserList:
     """
     Search for users by name or email.
-
-    Searches across user names (first, last, full) and email addresses.
-
-    Args:
-        search_query: Search term
-        limit: Maximum number of results
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        List of matching users
 
     Example use cases:
         - "Search for users named John"
         - "Find users with email containing '@example.com'"
-        - "Search for Smith"
     """
     moodle = get_moodle_client(ctx)
 
@@ -144,10 +203,10 @@ async def moodle_search_users(
     # core_user_get_users (criteria search) is often not granted to a token's
     # service and rejects 'fullname' outright. Prefer core_user_get_users_by_field,
     # which only needs moodle/user:viewdetails. It matches a single field exactly.
-    async def _by_field(field: str, value: str) -> list[dict]:
+    async def _by_field(field_name: str, value: str) -> list[dict]:
         try:
             data = await moodle.call(
-                'core_user_get_users_by_field', {'field': field, 'values': [value]}
+                "core_user_get_users_by_field", {"field": field_name, "values": [value]}
             )
             return data or []
         except Exception:
@@ -155,156 +214,145 @@ async def moodle_search_users(
 
     async def _by_criteria(criteria: list[dict]) -> list[dict]:
         try:
-            data = await moodle.call('core_user_get_users', {'criteria': criteria})
-            return (data or {}).get('users', []) if isinstance(data, dict) else []
+            data = await moodle.call("core_user_get_users", {"criteria": criteria})
+            return (data or {}).get("users", []) if isinstance(data, dict) else []
         except Exception:
             return []
 
-    if '@' in query:
-        for u in await _by_field('email', query):
-            found[u['id']] = u
+    if "@" in query:
+        for u in await _by_field("email", query):
+            found[u["id"]] = u
     else:
         # Try the criteria search (firstname/lastname) where the token allows it;
         # silently fall back to nothing if the function is not in the service.
         parts = query.split()
         if len(parts) >= 2:
             for u in await _by_criteria([
-                {'key': 'firstname', 'value': parts[0]},
-                {'key': 'lastname', 'value': ' '.join(parts[1:])},
+                {"key": "firstname", "value": parts[0]},
+                {"key": "lastname", "value": " ".join(parts[1:])},
             ]):
-                found[u['id']] = u
+                found[u["id"]] = u
         for token in parts:
-            for field in ('lastname', 'firstname'):
-                for u in await _by_criteria([{'key': field, 'value': token}]):
-                    found[u['id']] = u
+            for field_name in ("lastname", "firstname"):
+                for u in await _by_criteria([{"key": field_name, "value": token}]):
+                    found[u["id"]] = u
 
-    users = [User(**user) for user in found.values()][:limit]
+    users = [_user_profile(u) for u in list(found.values())[:limit]]
+    return UserList(users=users, count=len(users))
 
-    # Return the requested format even when empty so JSON callers can parse it.
-    response_data = {"users": [u.model_dump() for u in users], "count": len(users)}
-    return format_response(response_data, f"User Search Results: '{search_query}'", format)
 
 @mcp.tool(
     name="moodle_get_user_preferences",
-    description="Get user preferences and settings. REQUIRED: user_id (integer). Example: user_id=624. Use moodle_get_current_user to get user_id.",
-    annotations={
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True
-    }
+    description=(
+        "Get a user's preferences and settings (language, theme, timezone, "
+        "etc.). Accepts a numeric user id, a username, or an email (omit for "
+        "the current user). Example: user='jdoe' or user=624."
+    ),
+    tags={"read"},
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False,
+        idempotentHint=True, openWorldHint=True,
+    ),
 )
 @handle_moodle_errors
 async def moodle_get_user_preferences(
-    user_id: int | None = Field(None, description="User ID (omit for current user)"),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    user: Annotated[
+        int | str | None,
+        Field(description="User id, username, or email; omit for current user"),
+    ] = None,
+    ctx: Context = None,
+) -> UserPreferencesResult:
     """
     Get user preferences and settings.
-
-    Returns user-specific settings like language, theme, email format, etc.
-
-    Args:
-        user_id: Optional user ID (defaults to current user)
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        User preferences
 
     Example use cases:
         - "Show my preferences"
         - "What are user 123's preferences?"
-        - "Get language settings for current user"
     """
     moodle = get_moodle_client(ctx)
+    resolver = get_resolver(ctx)
+    uid = await resolver.user_id(user)
 
-    # Resolve user_id (defaults to current user if None)
-    user_id = await resolve_user_id(moodle, user_id)
-
-    # Get user preferences
+    items: list[UserPreferenceItem] = []
     try:
-        prefs_data = await moodle._make_request(
-            'core_user_get_user_preferences',
-            {'userid': user_id}
+        prefs_data = await moodle.call(
+            "core_user_get_user_preferences", {"userid": uid}
         )
-        preferences = prefs_data.get('preferences', [])
+        for p in (prefs_data or {}).get("preferences", []) or []:
+            items.append(
+                UserPreferenceItem(name=p.get("name", ""), value=p.get("value"))
+            )
     except Exception:
-        # Fallback to basic user info if preferences not available
-        users_data = await moodle._make_request(
-            'core_user_get_users_by_field',
-            {'field': 'id', 'values[0]': user_id}
+        # Fallback to basic user info if the preferences function is unavailable.
+        users_data = await moodle.call(
+            "core_user_get_users_by_field", {"field": "id", "values": [uid]}
         )
         if users_data:
-            user = users_data[0]
-            preferences = {
-                'lang': user.get('lang'),
-                'theme': user.get('theme'),
-                'timezone': user.get('timezone'),
-                'mailformat': user.get('mailformat')
-            }
-        else:
-            return f"Could not retrieve preferences for user {user_id}."
+            u = users_data[0]
+            for name in ("lang", "theme", "timezone", "mailformat"):
+                items.append(UserPreferenceItem(name=name, value=u.get(name)))
 
-    return format_response(preferences, f"User Preferences (User {user_id})", format)
+    return UserPreferencesResult(userid=uid, preferences=items, count=len(items))
+
 
 @mcp.tool(
     name="moodle_get_course_participants",
-    description="Get all participants (students, teachers, etc.) in a course with their roles. REQUIRED: course_id (integer). Optional: limit (1-100, default=20). Example: course_id=2292. Returns user IDs and role information.",
-    annotations={
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True
-    }
+    description=(
+        "List the participants (students, teachers, etc.) enrolled in a course, "
+        "with their roles. Accepts a numeric course id, shortname, or idnumber. "
+        "Example: course=7299. Supports limit/offset pagination."
+    ),
+    tags={"read"},
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False,
+        idempotentHint=True, openWorldHint=True,
+    ),
 )
 @handle_moodle_errors
 async def moodle_get_course_participants(
-    course_id: int = Field(description="Course ID", gt=0),
-    limit: int = Field(default=20, description="Maximum results", ge=1, le=100),
-    offset: int = Field(default=0, description="Offset for pagination", ge=0),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    course: Annotated[
+        int | str, Field(description="Course id, shortname, or idnumber")
+    ],
+    limit: Annotated[
+        int, Field(description="Maximum results", ge=1, le=100)
+    ] = 20,
+    offset: Annotated[
+        int, Field(description="Offset for pagination", ge=0)
+    ] = 0,
+    ctx: Context = None,
+) -> CourseParticipants:
     """
-    Get list of participants in a course with their roles.
-
-    Returns all enrolled users including students, teachers, and other roles.
-
-    Args:
-        course_id: Course ID
-        limit: Maximum number of participants to return
-        offset: Offset for pagination
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        List of course participants with roles
+    Get the participants enrolled in a course with their roles.
 
     Example use cases:
-        - "Who are the participants in course 42?"
+        - "Who are the participants in course 7299?"
         - "List teachers in course 15"
-        - "Show all users in course 8"
     """
     moodle = get_moodle_client(ctx)
+    resolver = get_resolver(ctx)
+    cid = await resolver.course_id(course)
 
-    # Get enrolled users (participants)
-    users_data = await moodle._make_request(
-        'core_enrol_get_enrolled_users',
-        {'courseid': course_id}
+    users_data = await moodle.call(
+        "core_enrol_get_enrolled_users", {"courseid": cid}
     )
+    users_data = users_data or []
 
-    if not users_data:
-        return f"No participants found in course {course_id}."
-
-    # Apply pagination
     total = len(users_data)
-    users_page = users_data[offset:offset+limit]
+    page = users_data[offset:offset + limit]
 
-    response_data = {
-        "participants": users_page,
-        "total": total,
-        "showing": len(users_page)
-    }
-    return format_response(response_data, f"Course Participants (Course {course_id})", format)
+    participants = [
+        Participant(
+            id=u.get("id", 0),
+            fullname=u.get("fullname"),
+            email=u.get("email"),
+            roles=[r.get("shortname", "") for r in (u.get("roles", []) or [])],
+        )
+        for u in page
+    ]
+
+    return CourseParticipants(
+        course_id=cid,
+        participants=participants,
+        total=total,
+        count=len(participants),
+    )
