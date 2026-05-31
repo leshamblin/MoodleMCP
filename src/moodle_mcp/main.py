@@ -85,7 +85,21 @@ async def lifespan(server: FastMCP) -> AsyncGenerator[dict, None]:
 # Create FastMCP server with lifespan BEFORE importing tools
 mcp = FastMCP(
     name="moodle_mcp",
-    instructions="Moodle LMS integration server providing read-only access to Moodle Web Services API",
+    instructions=(
+        "Read and write access to a Moodle LMS (courses, users, grades, "
+        "assignments, quizzes, forums, groups, calendar, messages, badges, "
+        "completion).\n\n"
+        "You rarely need to look up IDs first: most tools accept human-friendly "
+        "references and resolve them internally -- a user by id, username, or "
+        "email; a course by id, shortname, or idnumber; an activity by its name. "
+        "Pass the name you already have.\n\n"
+        "Write operations are guarded for safety. In DEV they are allowed only on "
+        "whitelisted courses (default: course 7299); in PROD they are blocked "
+        "unless explicitly enabled. A blocked write returns a clear 'blocked for "
+        "safety' error -- do not retry it against the same course.\n\n"
+        "Start with moodle_get_site_info to confirm the connection and identity, "
+        "or moodle_list_user_courses to see what a user can access."
+    ),
     lifespan=lifespan
 )
 

@@ -155,7 +155,12 @@ _GROUPMODE_NAMES = {0: "No groups", 1: "Separate groups", 2: "Visible groups"}
 
 @mcp.tool(
     name="moodle_get_course_groups",
-    description="Get all groups in a course. Accepts a course ID or name.",
+    description=(
+        "List every group in a course. Accepts a course id, shortname, or "
+        "fullname. Returns each group's id, name, idnumber, and enrolment key; "
+        "use a returned group id with moodle_get_group_members or the group "
+        "membership write tools. Example: course='CSC101' or course=7299."
+    ),
     tags={"read"},
     annotations=ToolAnnotations(
         readOnlyHint=True,
@@ -194,7 +199,12 @@ async def moodle_get_course_groups(
 
 @mcp.tool(
     name="moodle_get_course_groupings",
-    description="Get all groupings in a course. Accepts a course ID or name.",
+    description=(
+        "List every grouping (a named collection of groups) in a course. "
+        "Accepts a course id, shortname, or fullname. Returns each grouping's "
+        "id, name, and idnumber. Use moodle_get_course_groups for the groups "
+        "themselves. Example: course=7299."
+    ),
     tags={"read"},
     annotations=ToolAnnotations(
         readOnlyHint=True,
@@ -451,8 +461,10 @@ async def moodle_get_group_members(
 @mcp.tool(
     name="moodle_create_groups",
     description=(
-        "WRITE OPERATION - only works on whitelisted courses. Create a new "
-        "group in a course."
+        "WRITE: create a new group in a course. Only succeeds on a "
+        "write-whitelisted course (course 7299 in DEV); otherwise returns a "
+        "'blocked for safety' error. Returns the new group's id. "
+        "Example: course_id=7299, name='Lab Section A'."
     ),
     tags={"write", "group"},
     annotations=ToolAnnotations(
@@ -502,8 +514,10 @@ async def moodle_create_groups(
 @mcp.tool(
     name="moodle_add_group_members",
     description=(
-        "WRITE OPERATION - only works on whitelisted courses. Add a user to "
-        "a group."
+        "WRITE: add a user to a group. Only succeeds on a write-whitelisted "
+        "course (course 7299 in DEV). Get group_id from "
+        "moodle_get_course_groups. Idempotent: re-adding an existing member is "
+        "a no-op. Example: course_id=7299, group_id=42, user_id=624."
     ),
     tags={"write", "group"},
     annotations=ToolAnnotations(
@@ -541,8 +555,10 @@ async def moodle_add_group_members(
 @mcp.tool(
     name="moodle_delete_group_members",
     description=(
-        "WRITE OPERATION - only works on whitelisted courses. Remove a user "
-        "from a group."
+        "WRITE (destructive): remove a user from a group. Only succeeds on a "
+        "write-whitelisted course (course 7299 in DEV). This unassigns the "
+        "user from the group; it does not unenrol them from the course. "
+        "Example: course_id=7299, group_id=42, user_id=624."
     ),
     tags={"write", "group", "destructive"},
     annotations=ToolAnnotations(
@@ -584,8 +600,10 @@ async def moodle_delete_group_members(
 @mcp.tool(
     name="moodle_delete_groups",
     description=(
-        "WRITE OPERATION - only works on whitelisted courses. Delete a group "
-        "from a course."
+        "WRITE (destructive): permanently delete a group from a course. Only "
+        "succeeds on a write-whitelisted course (course 7299 in DEV). Removes "
+        "the group and all its memberships; enrolments are untouched. "
+        "Example: course_id=7299, group_id=42."
     ),
     tags={"write", "group", "destructive"},
     annotations=ToolAnnotations(
