@@ -55,22 +55,6 @@ class UserPreferencesResult:
     count: int = 0
 
 
-@dataclass
-class Participant:
-    id: int
-    fullname: str | None = None
-    email: str | None = None
-    roles: list[str] = field(default_factory=list)
-
-
-@dataclass
-class CourseParticipants:
-    course_id: int
-    participants: list[Participant] = field(default_factory=list)
-    total: int = 0
-    count: int = 0
-
-
 def _user_profile(data: dict) -> UserProfile:
     """Build a UserProfile from a raw Moodle user dict."""
     return UserProfile(
@@ -269,60 +253,3 @@ async def moodle_get_user_preferences(
                 items.append(UserPreferenceItem(name=name, value=u.get(name)))
 
     return UserPreferencesResult(userid=uid, preferences=items, count=len(items))
-
-
-@mcp.tool(
-    name="moodle_get_course_participants",
-    description=(
-        "List the participants (students, teachers, etc.) enrolled in a course, "
-        "with their roles. Accepts a numeric course id, shortname, or idnumber. "
-        "Example: course=7299. Supports limit/offset pagination."
-    ),
-    tags={"read"},
-    annotations=ToolAnnotations(
-        readOnlyHint=True, destructiveHint=False,
-        idempotentHint=True, openWorldHint=True,
-    ),
-)
-@handle_moodle_errors
-async def moodle_get_course_participants(
-    course: Annotated[
-        int | str, Field(description="Course id, shortname, or idnumber")
-    ],
-    limit: Annotated[
-        int, Field(description="Maximum results", ge=1, le=100)
-    ] = 20,
-    offset: Annotated[
-        int, Field(description="Offset for pagination", ge=0)
-    ] = 0,
-    ctx: Context = None,
-) -> CourseParticipants:
-    """List a course's participants with their roles."""
-    moodle = get_moodle_client(ctx)
-    resolver = get_resolver(ctx)
-    cid = await resolver.course_id(course)
-
-    users_data = await moodle.call(
-        "core_enrol_get_enrolled_users", {"courseid": cid}
-    )
-    users_data = users_data or []
-
-    total = len(users_data)
-    page = users_data[offset:offset + limit]
-
-    participants = [
-        Participant(
-            id=u.get("id", 0),
-            fullname=u.get("fullname"),
-            email=u.get("email"),
-            roles=[r.get("shortname", "") for r in (u.get("roles", []) or [])],
-        )
-        for u in page
-    ]
-
-    return CourseParticipants(
-        course_id=cid,
-        participants=participants,
-        total=total,
-        count=len(participants),
-    )
