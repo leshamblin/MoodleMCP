@@ -151,11 +151,13 @@ class TestSiteTools:
 
     async def test_available_functions(self, ctx):
         """Test listing available functions."""
-        result = await moodle_get_available_functions(format="markdown", ctx=ctx)
+        # Use JSON so the full function list is present (markdown summarizes
+        # large lists into a count rather than enumerating them).
+        result = await moodle_get_available_functions(format="json", ctx=ctx)
 
         assert isinstance(result, str)
         assert "function" in result.lower()
-        # Should have many functions
+        # Should expose many core_ functions in the full JSON payload.
         assert result.count("core_") > 10
         print(f"\n📋 Functions (first 200 chars):\n{result[:200]}...")
 

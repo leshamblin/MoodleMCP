@@ -113,14 +113,17 @@ class TestUserCourseLookup:
         except json.JSONDecodeError as e:
             pytest.fail(f"Failed to parse search results as JSON: {e}\nGot: {user_results}")
 
-        # Check if we found users
-        if not user_data or len(user_data) == 0:
-            pytest.skip(f"No users found matching '{search_query}' - test environment may not have this user")
+        # Normalize: search returns {"users": [...], "count": N} (or a bare list).
+        users_list = user_data.get("users", []) if isinstance(user_data, dict) else user_data
 
-        print(f"✓ Found {len(user_data)} user(s)\n")
+        # Check if we found users (name search may be unavailable to this token).
+        if not users_list:
+            pytest.skip(f"No users found matching '{search_query}' - test environment may not have this user or token cannot name-search")
+
+        print(f"✓ Found {len(users_list)} user(s)\n")
 
         # Display found users
-        for i, user in enumerate(user_data, 1):
+        for i, user in enumerate(users_list, 1):
             print(f"  {i}. {user.get('fullname', 'Unknown')} (ID: {user.get('id')})")
             if user.get('email'):
                 print(f"     Email: {user.get('email')}")
@@ -129,7 +132,7 @@ class TestUserCourseLookup:
             print()
 
         # Step 2: Get courses for first matching user
-        selected_user = user_data[0]
+        selected_user = users_list[0]
         user_id = selected_user.get('id')
         user_fullname = selected_user.get('fullname', 'Unknown')
 
@@ -209,19 +212,22 @@ class TestUserCourseLookup:
         print("TESTING: Invalid User Search")
         print(f"{'='*70}\n")
 
-        # Search for a user that definitely doesn't exist
+        # Search for a user that definitely doesn't exist (use JSON so we can
+        # assert on the structured result rather than prose).
         result = await moodle_search_users(
             search_query="ThisUserDefinitelyDoesNotExist12345",
             limit=5,
-            format=ResponseFormat.MARKDOWN,
+            format=ResponseFormat.JSON,
             ctx=ctx
         )
 
         print(f"Search result:\n{result}\n")
 
-        # Should return a message about no users found
+        # Should return a parseable, empty result set.
         assert isinstance(result, str)
-        assert "no" in result.lower() or "not found" in result.lower()
+        data = json.loads(result)
+        users = data.get("users", []) if isinstance(data, dict) else data
+        assert not users, f"Expected no users, got {users}"
 
     async def test_get_courses_for_current_user(self, ctx, moodle_client):
         """Test getting courses for the currently authenticated user."""

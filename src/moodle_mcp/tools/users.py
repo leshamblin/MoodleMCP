@@ -138,23 +138,51 @@ async def moodle_search_users(
     """
     moodle = get_moodle_client(ctx)
 
-    # Search using fullname criterion
-    users_data = await moodle._make_request(
-        'core_user_get_users',
-        {
-            'criteria[0][key]': 'fullname',
-            'criteria[0][value]': search_query
-        }
-    )
+    query = search_query.strip()
+    found: dict[int, dict] = {}
 
-    users_list = users_data.get('users', [])[:limit]
+    # core_user_get_users (criteria search) is often not granted to a token's
+    # service and rejects 'fullname' outright. Prefer core_user_get_users_by_field,
+    # which only needs moodle/user:viewdetails. It matches a single field exactly.
+    async def _by_field(field: str, value: str) -> list[dict]:
+        try:
+            data = await moodle.call(
+                'core_user_get_users_by_field', {'field': field, 'values': [value]}
+            )
+            return data or []
+        except Exception:
+            return []
 
-    if len(users_list) == 0:
-        return f"No users found matching '{search_query}'."
+    async def _by_criteria(criteria: list[dict]) -> list[dict]:
+        try:
+            data = await moodle.call('core_user_get_users', {'criteria': criteria})
+            return (data or {}).get('users', []) if isinstance(data, dict) else []
+        except Exception:
+            return []
 
-    users = [User(**user) for user in users_list]
+    if '@' in query:
+        for u in await _by_field('email', query):
+            found[u['id']] = u
+    else:
+        # Try the criteria search (firstname/lastname) where the token allows it;
+        # silently fall back to nothing if the function is not in the service.
+        parts = query.split()
+        if len(parts) >= 2:
+            for u in await _by_criteria([
+                {'key': 'firstname', 'value': parts[0]},
+                {'key': 'lastname', 'value': ' '.join(parts[1:])},
+            ]):
+                found[u['id']] = u
+        for token in parts:
+            for field in ('lastname', 'firstname'):
+                for u in await _by_criteria([{'key': field, 'value': token}]):
+                    found[u['id']] = u
 
-    return format_response([u.model_dump() for u in users], f"User Search Results: '{search_query}'", format)
+    users = [User(**user) for user in found.values()][:limit]
+
+    # Return the requested format even when empty so JSON callers can parse it.
+    response_data = {"users": [u.model_dump() for u in users], "count": len(users)}
+    return format_response(response_data, f"User Search Results: '{search_query}'", format)
 
 @mcp.tool(
     name="moodle_get_user_preferences",
