@@ -296,15 +296,21 @@ class TestUserCourseLookupEdgeCases:
     """Test edge cases and error handling."""
 
     async def test_short_search_query(self, ctx):
-        """Test that search requires minimum 2 characters."""
-        # This should fail validation (min_length=2)
-        with pytest.raises(Exception):
-            await moodle_search_users(
-                search_query="A",  # Only 1 character
-                limit=5,
-                format=ResponseFormat.MARKDOWN,
-                ctx=ctx
-            )
+        """A very short query is handled gracefully (returns a parseable result).
+
+        Note: the min_length=2 Field constraint is enforced by FastMCP at the
+        tool boundary, not on a direct Python call, so calling the function
+        directly must not raise -- it should just return a normal result.
+        """
+        result = await moodle_search_users(
+            search_query="A",
+            limit=5,
+            format=ResponseFormat.JSON,
+            ctx=ctx,
+        )
+        assert isinstance(result, str)
+        data = json.loads(result)
+        assert isinstance(data, dict) and "users" in data
 
     async def test_invalid_user_id(self, ctx):
         """Test getting courses for non-existent user ID."""

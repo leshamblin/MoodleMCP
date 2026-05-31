@@ -5,29 +5,33 @@ Purpose: prove the corrected _flatten_params produces VALID Moodle params for
 nested write operations (no invalidparameter errors), exercising the real
 write tools end-to-end. Conservative and reversible where possible:
 
-  - groups: create then delete (fully reversible)        [primary]
-  - calendar: create then delete (fully reversible)      [primary]
-  - enrol/unenrol: enrol an already-enrolled user, then  [reversible-ish]
-    leave enrolment as-is (re-enrol is idempotent); skip if no safe target
-  - grade / forum: shape-probe only (we assert the failure, if any, is a
-    Moodle *business* error, NOT a param-encoding error)
+  - groups: create -> add member -> remove member -> delete (fully reversible)
+  - calendar: create -> delete (fully reversible)
+  - enrol: enrol an already-enrolled user (idempotent shape-probe)
+
+The key assertion is that none of these produce a parameter-encoding error
+(invalidparameter / "missing required key"); Moodle business/permission
+errors are acceptable since they still prove the params were parsed.
 
 Run:
-  MOODLE_ENV=dev PYTHONPATH=src .venv/bin/python scripts/live_write_test.py
+  .venv/bin/python scripts/live_write_test.py
 """
 
 import asyncio
 import os
 import sys
-import time
+from pathlib import Path
 
-sys.path.insert(0, "src")
+# Make both the package (src/) and the repo root (for tests.test_helpers)
+# importable regardless of the working directory the script is launched from.
+_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_ROOT / "src"))
+sys.path.insert(0, str(_ROOT))
 os.environ.setdefault("MOODLE_ENV", "dev")
 
 import moodle_mcp.main as _main  # noqa: F401  (registers tools, builds config)
 from moodle_mcp.core.client import MoodleAPIClient
 from moodle_mcp.core.config import get_config
-from moodle_mcp.core.exceptions import MoodleAPIError
 from tests.test_helpers import MockContext
 
 COURSE = 7299
@@ -45,12 +49,16 @@ def is_param_error(exc: Exception) -> bool:
     return "invalidparameter" in s or "invalid parameter" in s or "missing required key" in s
 
 
+def fn(tool):
+    return getattr(tool, "fn", tool)
+
+
 async def main():
     cfg = get_config()
     print(f"ENV={cfg.environment_name} URL={cfg.url} whitelist={cfg._parsed_dev_whitelist}")
     if COURSE not in cfg._parsed_dev_whitelist:
         record("precondition", "SKIP", f"course {COURSE} not in whitelist {cfg._parsed_dev_whitelist}")
-        return
+        return summarize()
 
     client = MoodleAPIClient(base_url=cfg.url, token=cfg.token, timeout=cfg.api_timeout)
     ctx = MockContext(client)
@@ -58,28 +66,24 @@ async def main():
     from moodle_mcp.tools.groups import (
         moodle_create_groups, moodle_delete_groups,
         moodle_add_group_members, moodle_delete_group_members,
-        moodle_get_group_members,
     )
     from moodle_mcp.tools.calendar import (
         moodle_create_calendar_event, moodle_delete_calendar_event,
     )
     from moodle_mcp.tools.enrollment import moodle_enrol_users
 
-    def fn(tool):
-        return getattr(tool, "fn", tool)
+    info = await client.get_site_info()
+    my_uid = info["userid"]
 
     # ---- 1. GROUP create -> add member -> remove member -> delete (reversible)
     group_id = None
     try:
-        stamp = await client.get_site_info()  # warm + get a real userid
-        my_uid = stamp["userid"]
-        gname = f"_mcp_test_group_{int(stamp.get('userid', 0))}"
-        res = await fn(moodle_create_groups)(
+        gname = f"_mcp_test_group_{my_uid}"
+        await fn(moodle_create_groups)(
             course_id=COURSE,
             groups=[{"name": gname, "description": "temp group from live_write_test"}],
             ctx=ctx,
         )
-        # Recover the new group id by listing course groups.
         groups = await client.call("core_group_get_course_groups", {"courseid": COURSE})
         match = [g for g in (groups or []) if g.get("name") == gname]
         group_id = match[0]["id"] if match else None
@@ -93,9 +97,7 @@ async def main():
             await fn(moodle_add_group_members)(
                 course_id=COURSE, group_id=group_id, user_ids=[my_uid], ctx=ctx
             )
-            members = await client.call("core_group_get_group_members", {"groupids": [group_id]})
-            n = len((members or [{}])[0].get("userids", [])) if members else 0
-            record("group.add_member", "PASS", f"members={n}")
+            record("group.add_member", "PASS", "added self")
         except Exception as e:
             record("group.add_member", "FAIL" if is_param_error(e) else "ERR",
                    f"{type(e).__name__}: {str(e)[:120]}")
@@ -103,7 +105,7 @@ async def main():
             await fn(moodle_delete_group_members)(
                 course_id=COURSE, group_id=group_id, user_ids=[my_uid], ctx=ctx
             )
-            record("group.del_member", "PASS", "removed")
+            record("group.del_member", "PASS", "removed self")
         except Exception as e:
             record("group.del_member", "FAIL" if is_param_error(e) else "ERR",
                    f"{type(e).__name__}: {str(e)[:120]}")
@@ -118,11 +120,10 @@ async def main():
     event_id = None
     try:
         when = 1893456000  # 2030-01-01, far future, harmless
-        res = await fn(moodle_create_calendar_event)(
+        await fn(moodle_create_calendar_event)(
             course_id=COURSE, event_name="_mcp_test_event",
             event_time=when, description="temp", duration=0, ctx=ctx,
         )
-        # Find the created event id.
         ev = await client.call("core_calendar_get_calendar_events", {
             "events": {"courseids": [COURSE]},
             "options": {"timestart": when - 86400, "timeend": when + 86400},
@@ -153,12 +154,10 @@ async def main():
         )
         record("enrol.users", "PASS", "nested enrolments[] accepted (idempotent)")
     except Exception as e:
-        # A permissions error is fine (proves params parsed); a param error is a bug.
         status = "FAIL" if is_param_error(e) else "PASS-SHAPE"
         record("enrol.users", status, f"{type(e).__name__}: {str(e)[:120]}")
 
     await client.close()
-
     return summarize()
 
 
@@ -169,6 +168,7 @@ def summarize():
         print(f"  {status:10} {name}  {detail}")
     print(f"\nparam-encoding FAILURES: {len(bad)}")
     print("RESULT:", "GREEN (no param-encoding errors)" if not bad else "RED")
+    return len(bad)
 
 
 asyncio.run(main())
