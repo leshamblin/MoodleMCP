@@ -12,12 +12,17 @@ Moodle call is attempted; the client is never actually used.
 """
 
 import pytest
+from fastmcp.exceptions import ToolError
 
 from moodle_mcp.core.client import MoodleAPIClient
 from moodle_mcp.core.config import MoodleConfig
 from moodle_mcp.server import mcp
-from moodle_mcp.utils.error_handling import WriteOperationError
 from tests.test_helpers import MockContext, get_tool_by_name
+
+# The write decorators raise WriteOperationError, but the outer
+# @handle_moodle_errors decorator converts every Moodle error into a
+# fastmcp ToolError before it leaves the tool. Tests assert the surfaced
+# type (ToolError) and that the message names the safety block.
 
 
 def _client() -> MoodleAPIClient:
@@ -41,7 +46,7 @@ async def test_send_message_blocked_when_global_writes_disabled():
     """moodle_send_message must refuse when dev_allow_global_writes is False."""
     ctx = MockContext(_client(), config=_config(dev_allow_global_writes=False))
     send = get_tool_by_name(mcp, "moodle_send_message")
-    with pytest.raises(WriteOperationError):
+    with pytest.raises(ToolError, match="blocked for safety"):
         await send(recipient_user_id=123, message_text="hi", ctx=ctx)
 
 
@@ -50,7 +55,7 @@ async def test_delete_conversation_blocked_when_global_writes_disabled():
     """moodle_delete_conversation must refuse when global writes are disabled."""
     ctx = MockContext(_client(), config=_config(dev_allow_global_writes=False))
     delete = get_tool_by_name(mcp, "moodle_delete_conversation")
-    with pytest.raises(WriteOperationError):
+    with pytest.raises(ToolError, match="blocked for safety"):
         await delete(conversation_id=789, ctx=ctx)
 
 
@@ -63,7 +68,7 @@ async def test_global_writes_blocked_in_prod_without_allow():
                        prod_token="x", prod_allow_writes=False),
     )
     send = get_tool_by_name(mcp, "moodle_send_message")
-    with pytest.raises(WriteOperationError):
+    with pytest.raises(ToolError, match="blocked for safety"):
         await send(recipient_user_id=123, message_text="hi", ctx=ctx)
 
 
@@ -72,6 +77,6 @@ async def test_course_write_blocked_for_non_whitelisted_course():
     """A grade save on a non-whitelisted course must be blocked."""
     ctx = MockContext(_client(), config=_config())
     save = get_tool_by_name(mcp, "moodle_save_assignment_grade")
-    with pytest.raises(WriteOperationError):
+    with pytest.raises(ToolError, match="blocked for safety"):
         # course 9999 is not in the whitelist; blocked before any API call.
         await save(course_id=9999, assignment_id=1, user_id=1, grade=50.0, ctx=ctx)

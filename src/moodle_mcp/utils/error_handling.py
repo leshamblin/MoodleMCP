@@ -78,21 +78,14 @@ def handle_moodle_errors(func: Callable) -> Callable:
             # Validation errors from Pydantic or other sources
             raise ToolError(f"Validation error: {e}")
         except Exception as e:
-            # Unexpected errors - provide generic message
-            # Check if we're in development mode to include debug info
+            # Unexpected errors - provide generic message.
+            # Include the exception type only in DEV; in PROD strip it so we
+            # never leak internals. Default to PROD-safe (no debug info) when
+            # the config can't be resolved.
             ctx: Context | None = kwargs.get('ctx')
-            is_dev = True  # Default to dev if config unavailable
+            config = _get_config_from_ctx(ctx)
+            is_dev = config.is_development if config is not None else False
 
-            if ctx is not None:
-                try:
-                    config = ctx.request_context.lifespan_context.get('config')
-                    if config is not None:
-                        is_dev = config.is_development
-                except:
-                    pass  # Keep default if config access fails
-
-            # In DEV: include exception type for debugging
-            # In PROD: strip debug info for security
             if is_dev:
                 error_msg = f"An unexpected error occurred: {type(e).__name__}\n\n"
             else:
