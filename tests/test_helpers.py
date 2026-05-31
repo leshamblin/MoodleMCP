@@ -45,12 +45,45 @@ def discover_tools(mcp_instance) -> dict[str, Callable]:
     """
     tools = {}
 
-    # FastMCP stores tools in _tool_manager._tools
+    # FastMCP 3.x: list_tools() is an async coroutine returning a list of
+    # FunctionTool. discover_tools is a sync helper that may be called either
+    # outside any event loop (asyncio.run) or from within pytest-asyncio's
+    # running loop (asyncio.run would raise) -- run it on a worker thread in
+    # the latter case so it always gets a clean loop.
+    list_tools = getattr(mcp_instance, 'list_tools', None)
+    if callable(list_tools):
+        tool_objs = _run_coroutine_sync(list_tools())
+        for tool_obj in tool_objs:
+            tools[tool_obj.name] = unwrap_tool(tool_obj)
+        return tools
+
+    # Fallback: older FastMCP stored tools in _tool_manager._tools
     if hasattr(mcp_instance, '_tool_manager') and hasattr(mcp_instance._tool_manager, '_tools'):
         for tool_name, tool_obj in mcp_instance._tool_manager._tools.items():
             tools[tool_name] = unwrap_tool(tool_obj)
 
     return tools
+
+
+def _run_coroutine_sync(coro):
+    """
+    Run a coroutine to completion from synchronous code, whether or not an
+    event loop is already running in the current thread.
+    """
+    import asyncio
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # No running loop: safe to use asyncio.run directly.
+        return asyncio.run(coro)
+
+    # A loop is already running in this thread (e.g. pytest-asyncio). Run the
+    # coroutine on a separate thread with its own loop.
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+        return ex.submit(asyncio.run, coro).result()
 
 
 def get_tool_by_name(mcp_instance, tool_name: str) -> Callable | None:
@@ -64,11 +97,8 @@ def get_tool_by_name(mcp_instance, tool_name: str) -> Callable | None:
     Returns:
         The unwrapped tool function, or None if not found
     """
-    if hasattr(mcp_instance, '_tool_manager') and hasattr(mcp_instance._tool_manager, '_tools'):
-        tools = mcp_instance._tool_manager._tools
-        if tool_name in tools:
-            return unwrap_tool(tools[tool_name])
-    return None
+    tools = discover_tools(mcp_instance)
+    return tools.get(tool_name)
 
 
 def get_tools_by_category(mcp_instance) -> dict[str, list[str]]:
@@ -88,8 +118,8 @@ def get_tools_by_category(mcp_instance) -> dict[str, list[str]]:
     """
     categories = {}
 
-    if hasattr(mcp_instance, '_tool_manager') and hasattr(mcp_instance._tool_manager, '_tools'):
-        for tool_name in mcp_instance._tool_manager._tools.keys():
+    for tool_name in discover_tools(mcp_instance).keys():
+        if True:
             # Extract category from tool name (e.g., 'moodle_get_site_info' -> 'site')
             if tool_name.startswith('moodle_'):
                 # Extract the second part after 'moodle_'

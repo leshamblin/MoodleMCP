@@ -64,8 +64,11 @@ async def lifespan(server: FastMCP) -> AsyncGenerator[dict, None]:
         print(f"⚠ Warning: Could not verify Moodle connection: {e}", file=sys.stderr)
         print(f"  Server will continue, but API calls may fail.", file=sys.stderr)
 
-    # Count tools after they're registered
-    tool_count = len(server._tool_manager._tools) if hasattr(server, '_tool_manager') else 0
+    # Count tools after they're registered (public API in FastMCP 3.x)
+    try:
+        tool_count = len(await server.list_tools())
+    except Exception:
+        tool_count = 0
     print(f"Server ready with {tool_count} tools registered.\n", file=sys.stderr)
 
     # Yield context available to all tools via ctx.request_context.lifespan_context
@@ -93,6 +96,19 @@ moodle_mcp.server.mcp = mcp
 # Import all tool modules AFTER setting mcp instance
 # These imports have side effects - they register tools with the server
 from moodle_mcp.tools import site, courses, users, grades, assignments, messages, calendar, forums, groups, enrollment, quiz, completion, badges
+
+# PROD write lockdown: when running against production with writes disabled,
+# hide every write-tagged tool from the client entirely. This is belt-and-
+# suspenders with the @require_write_permission decorator (which blocks at
+# call time); disabling by tag also removes them from tool listings.
+# (Write tools are tagged {"write"} during the per-module refactor.)
+_config = get_config()
+if _config.is_production and not _config.prod_allow_writes:
+    try:
+        mcp.disable(tags={"write"})
+        print("⚠️  PROD write lockdown: 'write'-tagged tools disabled.", file=sys.stderr)
+    except Exception as e:
+        print(f"⚠️  Could not apply PROD write lockdown via tags: {e}", file=sys.stderr)
 
 def main():
     """Entry point for running the server."""
