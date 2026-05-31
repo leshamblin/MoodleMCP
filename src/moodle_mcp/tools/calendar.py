@@ -88,14 +88,7 @@ async def moodle_get_calendar_events(
     ] = 30,
     ctx: Context = None,
 ) -> CalendarEventList:
-    """
-    Get calendar events for a specified date range.
-
-    Example use cases:
-        - "What events are coming up?"
-        - "Show my calendar for the next week"
-        - "Get calendar events for the next 60 days"
-    """
+    """Get the current user's calendar events over a date range."""
     moodle = get_moodle_client(ctx)
 
     time_now = int(datetime.now().timestamp())
@@ -133,14 +126,7 @@ async def moodle_get_upcoming_events(
     ] = 10,
     ctx: Context = None,
 ) -> CalendarEventList:
-    """
-    Get upcoming deadlines and events sorted by date.
-
-    Example use cases:
-        - "What's due soon?"
-        - "Show my upcoming deadlines"
-        - "What events are next?"
-    """
+    """Get upcoming deadlines and events sorted by date."""
     moodle = get_moodle_client(ctx)
 
     time_now = int(datetime.now().timestamp())
@@ -181,14 +167,7 @@ async def moodle_get_course_events(
     ] = 60,
     ctx: Context = None,
 ) -> CalendarEventList:
-    """
-    Get calendar events for a specific course.
-
-    Example use cases:
-        - "What events are in course 42?"
-        - "Show deadlines for course 15"
-        - "Get calendar for course 8"
-    """
+    """Get calendar events for a specific course."""
     moodle = get_moodle_client(ctx)
 
     time_now = int(datetime.now().timestamp())
@@ -251,17 +230,7 @@ async def moodle_create_calendar_event(
     ] = 0,
     ctx: Context = None,
 ) -> CreatedCalendarEvent:
-    """
-    Create a new calendar event in a course.
-
-    SAFETY: This write operation is only allowed on whitelisted courses.
-    Default whitelist: [7299] (Elizabeth's Moodle Playground)
-
-    Example use cases:
-        - "Create a calendar event for team meeting"
-        - "Add an event to the course calendar"
-        - "Schedule a study session event"
-    """
+    """Create a calendar event in a course (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
 
     params = {
@@ -323,19 +292,7 @@ async def moodle_delete_calendar_event(
     ] = False,
     ctx: Context = None,
 ) -> DeletedCalendarEvent:
-    """
-    Delete a calendar event.
-
-    SAFETY: This write operation is only allowed on whitelisted courses.
-    Default whitelist: [7299] (Elizabeth's Moodle Playground)
-
-    NOTE: This is a DESTRUCTIVE operation. The event will be permanently deleted.
-
-    Example use cases:
-        - "Delete calendar event 123"
-        - "Remove event from course calendar"
-        - "Delete recurring event and all instances"
-    """
+    """Delete a calendar event (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
 
     params = {

@@ -222,14 +222,7 @@ async def moodle_list_user_courses(
     ] = False,
     ctx: Context = None,
 ) -> CourseList:
-    """
-    Get list of courses where a user is enrolled.
-
-    Example use cases:
-        - "What courses am I enrolled in?"
-        - "List all my active courses"
-        - "Show courses for user ID 123"
-    """
+    """List the courses a user is enrolled in."""
     moodle = get_moodle_client(ctx)
     resolver = get_resolver(ctx)
     uid = await resolver.user_id(user)
@@ -266,14 +259,7 @@ async def moodle_get_course_details(
     ],
     ctx: Context = None,
 ) -> CourseDetails:
-    """
-    Get comprehensive details for a specific course.
-
-    Example use cases:
-        - "Get details for course 42"
-        - "Show me information about course ID 15"
-        - "What is the description of course 8?"
-    """
+    """Get a course's details by ID."""
     moodle = get_moodle_client(ctx)
     resolver = get_resolver(ctx)
     cid = await resolver.course_id(course)
@@ -325,14 +311,7 @@ async def moodle_search_courses(
     ] = 20,
     ctx: Context = None,
 ) -> CourseSearchResult:
-    """
-    Search for courses by name or description.
-
-    Example use cases:
-        - "Search for courses about Python"
-        - "Find courses with 'calculus' in the name"
-        - "Search for computer science courses"
-    """
+    """Search courses by name or description."""
     moodle = get_moodle_client(ctx)
 
     search_data = await moodle.call(
@@ -370,14 +349,7 @@ async def moodle_get_course_contents(
     ],
     ctx: Context = None,
 ) -> CourseContents:
-    """
-    Get complete course structure with sections, modules, and activities.
-
-    Example use cases:
-        - "Show me the structure of course 42"
-        - "What activities are in course 15?"
-        - "List all sections in course 8"
-    """
+    """Get a course's section/module content structure."""
     moodle = get_moodle_client(ctx)
     resolver = get_resolver(ctx)
     cid = await resolver.course_id(course)
@@ -441,14 +413,7 @@ async def moodle_get_enrolled_users(
     ] = 0,
     ctx: Context = None,
 ) -> EnrolledUsers:
-    """
-    Get list of users enrolled in a course.
-
-    Example use cases:
-        - "Who is enrolled in course 42?"
-        - "List students in course 15"
-        - "Show participants in course 8"
-    """
+    """List users enrolled in a course."""
     moodle = get_moodle_client(ctx)
     resolver = get_resolver(ctx)
     cid = await resolver.course_id(course)
@@ -494,14 +459,7 @@ async def moodle_get_enrolled_users(
 )
 @handle_moodle_errors
 async def moodle_get_course_categories(ctx: Context = None) -> CategoryList:
-    """
-    Get list of all course categories.
-
-    Example use cases:
-        - "What course categories exist?"
-        - "List all course categories"
-        - "Show me the category structure"
-    """
+    """List course categories on the site."""
     moodle = get_moodle_client(ctx)
 
     categories_data = await moodle.call("core_course_get_categories")
@@ -548,14 +506,7 @@ async def moodle_get_recent_courses(
     ] = 10,
     ctx: Context = None,
 ) -> CourseList:
-    """
-    Get recently accessed courses for a user.
-
-    Example use cases:
-        - "What courses did I recently access?"
-        - "Show my recent courses"
-        - "List recently viewed courses"
-    """
+    """List a user's recently accessed courses."""
     moodle = get_moodle_client(ctx)
     resolver = get_resolver(ctx)
     uid = await resolver.user_id(user)
@@ -617,15 +568,7 @@ async def moodle_create_course(
     ] = True,
     ctx: Context = None,
 ) -> CourseCreated:
-    """
-    Create a new course in Moodle.
-
-    WARNING: Requires ADMIN permissions in Moodle.
-
-    Example use cases:
-        - "Create a new course called 'Introduction to Python'"
-        - "Add a course with shortname 'CS101' in category 5"
-    """
+    """Create a new course (admin only)."""
     moodle = get_moodle_client(ctx)
 
     course: dict = {
@@ -688,20 +631,7 @@ async def moodle_update_course(
     ] = None,
     ctx: Context = None,
 ) -> CourseUpdated:
-    """
-    Update an existing course's properties.
-
-    SAFETY: Only allowed on whitelisted courses in development mode.
-    WARNING: Requires ADMIN or TEACHER permissions in Moodle.
-
-    Raises:
-        WriteOperationError: If course_id is not whitelisted
-
-    Example use cases:
-        - "Update course 7299 fullname to 'Advanced Python'"
-        - "Hide course 7299"
-        - "Change course 7299 summary"
-    """
+    """Update an existing course's properties (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
 
     course: dict = {"id": course_id}
@@ -744,19 +674,7 @@ async def moodle_delete_course(
     ],
     ctx: Context = None,
 ) -> CourseDeleted:
-    """
-    PERMANENTLY delete a course from Moodle.
-
-    DANGER: This is a DESTRUCTIVE operation that CANNOT BE UNDONE!
-    SAFETY: Only allowed on whitelisted courses in development mode.
-
-    Raises:
-        WriteOperationError: If course_id is not whitelisted
-
-    Example use cases:
-        - "Delete course 7299" (only if whitelisted)
-        - "Remove course 7299 permanently"
-    """
+    """Permanently delete a course (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
     await moodle.call("core_course_delete_courses", {"courseids": [course_id]})
     return CourseDeleted(course_id=course_id, deleted=True)
@@ -796,19 +714,7 @@ async def moodle_duplicate_course(
     ] = True,
     ctx: Context = None,
 ) -> CourseDuplicated:
-    """
-    Duplicate an existing course with all its activities and settings.
-
-    SAFETY: Source course must be whitelisted in development mode.
-    WARNING: Requires ADMIN or TEACHER permissions in Moodle.
-
-    Raises:
-        WriteOperationError: If source course_id is not whitelisted
-
-    Example use cases:
-        - "Duplicate course 7299 as 'Test Course Copy'"
-        - "Copy course 7299 to category 5"
-    """
+    """Duplicate a course with its activities and settings (whitelisted source only)."""
     moodle = get_moodle_client(ctx)
 
     result = await moodle.call(
@@ -857,19 +763,7 @@ async def moodle_import_course_content(
     ],
     ctx: Context = None,
 ) -> CourseImported:
-    """
-    Import activities and content from one course to another.
-
-    SAFETY: Both courses must be whitelisted in development mode.
-    WARNING: Requires ADMIN or TEACHER permissions in Moodle.
-
-    Raises:
-        WriteOperationError: If either course is not whitelisted
-
-    Example use cases:
-        - "Import content from course 7299 to course 7300"
-        - "Copy activities from course 7299"
-    """
+    """Import activities/content from one course into another (both whitelisted)."""
     moodle = get_moodle_client(ctx)
 
     await moodle.call(
@@ -917,15 +811,7 @@ async def moodle_create_course_category(
     ] = True,
     ctx: Context = None,
 ) -> CategoryCreated:
-    """
-    Create a new course category in Moodle.
-
-    WARNING: Requires ADMIN permissions in Moodle.
-
-    Example use cases:
-        - "Create a category called 'Computer Science'"
-        - "Add a subcategory under category 5"
-    """
+    """Create a new course category (admin only)."""
     moodle = get_moodle_client(ctx)
 
     category: dict = {
@@ -977,18 +863,7 @@ async def moodle_delete_course_category(
     ] = False,
     ctx: Context = None,
 ) -> CategoryDeleted:
-    """
-    PERMANENTLY delete a course category from Moodle.
-
-    DANGER: This is a DESTRUCTIVE operation that CANNOT BE UNDONE!
-    If recursive=True, ALL COURSES in this category will also be deleted!
-
-    WARNING: Requires ADMIN permissions in Moodle.
-
-    Example use cases:
-        - "Delete empty category 15"
-        - "Remove category 20 and all its courses" (recursive)
-    """
+    """Permanently delete a course category (admin only)."""
     moodle = get_moodle_client(ctx)
 
     await moodle.call(

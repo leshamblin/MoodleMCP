@@ -106,13 +106,7 @@ def _user_profile(data: dict) -> UserProfile:
 )
 @handle_moodle_errors
 async def moodle_get_current_user(ctx: Context = None) -> UserProfile:
-    """
-    Get the profile of the currently authenticated (token) user.
-
-    Example use cases:
-        - "Who am I logged in as?"
-        - "What is my user id?"
-    """
+    """Get the profile of the currently authenticated user."""
     moodle = get_moodle_client(ctx)
     info = await moodle.get_site_info()
     return UserProfile(
@@ -144,13 +138,7 @@ async def moodle_get_user_profile(
     ] = None,
     ctx: Context = None,
 ) -> UserProfile:
-    """
-    Get a detailed profile for a specific user.
-
-    Example use cases:
-        - "Get profile for user 123"
-        - "Who is jdoe@example.com?"
-    """
+    """Get a detailed profile for a user."""
     moodle = get_moodle_client(ctx)
     resolver = get_resolver(ctx)
     uid = await resolver.user_id(user)
@@ -188,13 +176,7 @@ async def moodle_search_users(
     ] = 20,
     ctx: Context = None,
 ) -> UserList:
-    """
-    Search for users by name or email.
-
-    Example use cases:
-        - "Search for users named John"
-        - "Find users with email containing '@example.com'"
-    """
+    """Search users by name or email."""
     moodle = get_moodle_client(ctx)
 
     query = search_query.strip()
@@ -262,13 +244,7 @@ async def moodle_get_user_preferences(
     ] = None,
     ctx: Context = None,
 ) -> UserPreferencesResult:
-    """
-    Get user preferences and settings.
-
-    Example use cases:
-        - "Show my preferences"
-        - "What are user 123's preferences?"
-    """
+    """Get a user's preferences and settings."""
     moodle = get_moodle_client(ctx)
     resolver = get_resolver(ctx)
     uid = await resolver.user_id(user)
@@ -321,13 +297,7 @@ async def moodle_get_course_participants(
     ] = 0,
     ctx: Context = None,
 ) -> CourseParticipants:
-    """
-    Get the participants enrolled in a course with their roles.
-
-    Example use cases:
-        - "Who are the participants in course 7299?"
-        - "List teachers in course 15"
-    """
+    """List a course's participants with their roles."""
     moodle = get_moodle_client(ctx)
     resolver = get_resolver(ctx)
     cid = await resolver.course_id(course)

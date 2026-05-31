@@ -116,13 +116,7 @@ async def moodle_list_assignments(
     ],
     ctx: Context = None,
 ) -> AssignmentList:
-    """
-    Get list of all assignments in a course.
-
-    Example use cases:
-        - "What assignments are in course 42?"
-        - "List all assignments for course 15"
-    """
+    """List a course's assignments."""
     moodle = get_moodle_client(ctx)
     resolver = get_resolver(ctx)
     cid = await resolver.course_id(course)
@@ -151,13 +145,7 @@ async def moodle_get_assignment_details(
     assignment_id: Annotated[int, Field(description="Assignment ID", gt=0)],
     ctx: Context = None,
 ) -> Assignment:
-    """
-    Get comprehensive details for a specific assignment.
-
-    Example use cases:
-        - "Show details for assignment 123"
-        - "Get due date for assignment 67"
-    """
+    """Get an assignment's details."""
     moodle = get_moodle_client(ctx)
 
     assignment = await find_assignment_by_id(moodle, assignment_id)
@@ -188,16 +176,7 @@ async def moodle_get_assignment_submissions(
     assignment_id: Annotated[int, Field(description="Assignment ID", gt=0)],
     ctx: Context = None,
 ) -> SubmissionList:
-    """
-    Get list of submissions for an assignment.
-
-    Shows submission status for all students (requires teacher/admin
-    permissions).
-
-    Example use cases:
-        - "Show submissions for assignment 123"
-        - "Who submitted assignment 45?"
-    """
+    """Get an assignment's submissions."""
     moodle = get_moodle_client(ctx)
 
     submissions_data = await moodle.call(
@@ -243,13 +222,7 @@ async def moodle_get_user_assignments(
     ] = None,
     ctx: Context = None,
 ) -> AssignmentList:
-    """
-    Get all assignments for a user across all enrolled courses.
-
-    Example use cases:
-        - "What assignments do I have?"
-        - "List assignments for user 123"
-    """
+    """Get a user's assignments across all enrolled courses."""
     moodle = get_moodle_client(ctx)
     resolver = get_resolver(ctx)
     uid = await resolver.user_id(user)
@@ -284,13 +257,7 @@ async def moodle_get_submission_status(
     ] = None,
     ctx: Context = None,
 ) -> SubmissionStatus:
-    """
-    Get detailed submission status for an assignment.
-
-    Example use cases:
-        - "Can I still submit assignment 123?"
-        - "Check submission status for assignment 456"
-    """
+    """Get a user's submission status for an assignment."""
     moodle = get_moodle_client(ctx)
     resolver = get_resolver(ctx)
     uid = await resolver.user_id(user)
@@ -336,19 +303,7 @@ async def moodle_save_assignment_submission(
     ],
     ctx: Context = None,
 ) -> SavedSubmission:
-    """
-    Save assignment submission text as draft.
-
-    SAFETY: This write operation is only allowed on whitelisted courses.
-    Default whitelist: [7299] (Elizabeth's Moodle Playground)
-
-    This saves the submission as a DRAFT. To finalize submission, use
-    moodle_submit_assignment after saving.
-
-    Example use cases:
-        - "Save my assignment answer"
-        - "Submit draft for assignment 123"
-    """
+    """Save assignment submission text as a draft (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
 
     await moodle.call(
@@ -399,19 +354,7 @@ async def moodle_submit_assignment(
     ],
     ctx: Context = None,
 ) -> SubmittedAssignment:
-    """
-    Submit assignment for final grading.
-
-    SAFETY: This write operation is only allowed on whitelisted courses.
-    Default whitelist: [7299] (Elizabeth's Moodle Playground)
-
-    WARNING: This is a FINAL action. Once submitted, you cannot edit the
-    submission unless the teacher reopens it.
-
-    Example use cases:
-        - "Submit assignment 123 for grading"
-        - "Turn in assignment"
-    """
+    """Submit an assignment for final grading (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
 
     await moodle.call(

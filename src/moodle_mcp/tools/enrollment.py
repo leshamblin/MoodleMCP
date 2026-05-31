@@ -55,11 +55,9 @@ async def moodle_enrol_users(
     role_id: Annotated[int, Field(description="Role id (5=Student, 4=Teacher, 3=Non-editing, 1=Manager)", gt=0)] = 5,
     ctx: Context = None,
 ) -> EnrolmentResult:
-    """
-    Enrol one or more users into a course with a role.
+    """Enrol users into a course with a role.
 
-    SAFETY: only allowed on whitelisted courses (default [7299]).
-    enrol_manual_enrol_users returns null on success.
+    Calls enrol_manual_enrol_users, which returns null on success.
     """
     moodle = get_moodle_client(ctx)
     await moodle.call(
@@ -100,12 +98,10 @@ async def moodle_unenrol_users(
     user_ids: Annotated[list[int], Field(description="User IDs to unenrol", min_length=1)],
     ctx: Context = None,
 ) -> UnenrolmentResult:
-    """
-    Remove one or more users from a course.
+    """Unenrol users from a course.
 
-    SAFETY: only allowed on whitelisted courses (default [7299]).
-    WARNING: users lose course access; progress/grades are hidden (not deleted).
-    enrol_manual_unenrol_users returns null on success.
+    Users lose course access; their progress/grades are hidden, not deleted.
+    Calls enrol_manual_unenrol_users, which returns null on success.
     """
     moodle = get_moodle_client(ctx)
     await moodle.call(

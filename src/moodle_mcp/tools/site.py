@@ -26,16 +26,7 @@ from ..models.results import SiteInfo, ConnectionStatus, AvailableFunctions
 )
 @handle_moodle_errors
 async def moodle_get_site_info(ctx: Context = None) -> SiteInfo:
-    """
-    Get site information and current user identity.
-
-    Returns the site name/URL/version plus the authenticated user's id,
-    username, full name, and email.
-
-    Example use cases:
-        - "What Moodle site am I connected to?"
-        - "What is my user id?"
-    """
+    """Get site and authenticated-user information."""
     moodle = get_moodle_client(ctx)
     info = await moodle.get_site_info()
     return SiteInfo(
@@ -65,13 +56,7 @@ async def moodle_get_site_info(ctx: Context = None) -> SiteInfo:
 )
 @handle_moodle_errors
 async def moodle_test_connection(ctx: Context = None) -> ConnectionStatus:
-    """
-    Verify connectivity and that the authentication token is valid.
-
-    Example use cases:
-        - "Check if the Moodle connection is working"
-        - "Test my API authentication"
-    """
+    """Test server connectivity and token validity."""
     moodle = get_moodle_client(ctx)
     info = await moodle.get_site_info()
     return ConnectionStatus(
@@ -100,13 +85,7 @@ async def moodle_test_connection(ctx: Context = None) -> ConnectionStatus:
 )
 @handle_moodle_errors
 async def moodle_get_available_functions(ctx: Context = None) -> AvailableFunctions:
-    """
-    Get the list of Web Service functions enabled for the current token.
-
-    Example use cases:
-        - "What API functions can I use?"
-        - "Is enrol_manual_enrol_users available to my token?"
-    """
+    """List API functions available with the current token."""
     moodle = get_moodle_client(ctx)
     info = await moodle.get_site_info()
     names = sorted(f.get("name", "") for f in (info.get("functions", []) or []))

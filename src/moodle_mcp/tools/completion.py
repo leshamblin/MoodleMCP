@@ -99,14 +99,10 @@ async def moodle_get_activities_completion_status(
     ] = None,
     ctx: Context = None,
 ) -> ActivitiesCompletionStatus:
-    """
-    Get completion status of all activities in a course for a specific user.
+    """Get a user's activity completion status in a course.
 
     State values: 0=incomplete, 1=complete, 2=complete with pass,
     3=complete with fail. Tracking: 0=none, 1=manual, 2=automatic.
-
-    Example use cases:
-        - "Which activities has user 123 completed in course 7299?"
     """
     moodle = get_moodle_client(ctx)
     resolver = get_resolver(ctx)
@@ -159,13 +155,7 @@ async def moodle_get_course_completion_status(
     ] = None,
     ctx: Context = None,
 ) -> CourseCompletionStatus:
-    """
-    Get overall course completion status for a specific user.
-
-    Example use cases:
-        - "Has user 123 completed course 7299?"
-        - "Show course completion criteria for me"
-    """
+    """Get a user's overall course completion status."""
     moodle = get_moodle_client(ctx)
     resolver = get_resolver(ctx)
     cid = await resolver.course_id(course)
@@ -222,15 +212,9 @@ async def moodle_mark_course_self_completed(
     ],
     ctx: Context = None,
 ) -> WriteResult:
-    """
-    Mark a course as self-completed.
+    """Mark a course as self-completed by the current user.
 
-    Allows students to mark a course as completed when the course allows
-    self-completion.
-
-    SAFETY:
-    - Only works on whitelisted courses (default: 7299)
-    - Idempotent (safe to call multiple times)
+    Requires the course to allow self-completion. Idempotent.
     """
     moodle = get_moodle_client(ctx)
 
@@ -274,16 +258,10 @@ async def moodle_update_activity_completion_status_manually(
     ],
     ctx: Context = None,
 ) -> WriteResult:
-    """
-    Manually update the completion status of an activity.
+    """Manually mark an activity complete/incomplete.
 
-    Allows teachers (or users with appropriate permissions) to manually mark an
-    activity as complete or incomplete.
-
-    SAFETY:
-    - Only works on whitelisted courses (default: 7299)
-    - Idempotent (safe to call multiple times with same status)
-    - Only works for activities with manual completion tracking enabled
+    Only works for activities with manual completion tracking enabled.
+    Idempotent.
     """
     moodle = get_moodle_client(ctx)
 

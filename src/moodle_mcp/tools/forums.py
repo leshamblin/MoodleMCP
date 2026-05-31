@@ -117,15 +117,7 @@ async def moodle_get_forum_discussions(
     ] = 20,
     ctx: Context = None,
 ) -> ForumDiscussionList:
-    """
-    Get list of forum discussions in a course.
-
-    Shows forum discussions across the course's forums.
-
-    Example use cases:
-        - "What forum discussions are in course 42?"
-        - "List discussions for course 8"
-    """
+    """List discussions across all forums in a course."""
     moodle = get_moodle_client(ctx)
     resolver = get_resolver(ctx)
     cid = await resolver.course_id(course)
@@ -172,13 +164,7 @@ async def moodle_get_discussion_posts(
     discussion_id: Annotated[int, Field(description="Discussion ID", gt=0)],
     ctx: Context = None,
 ) -> DiscussionPosts:
-    """
-    Get all posts from a specific forum discussion.
-
-    Example use cases:
-        - "Show posts in discussion 123"
-        - "Read discussion 45"
-    """
+    """Get all posts in a forum discussion."""
     moodle = get_moodle_client(ctx)
 
     posts_data = await moodle.call(
@@ -229,13 +215,7 @@ async def moodle_search_forums(
     ] = 20,
     ctx: Context = None,
 ) -> ForumSearchResult:
-    """
-    Search forum discussions by keyword across the user's courses.
-
-    Example use cases:
-        - "Search forums for 'Python'"
-        - "Search course 42 forums for 'deadline'"
-    """
+    """Search forum discussions by keyword across the user's courses."""
     moodle = get_moodle_client(ctx)
     resolver = get_resolver(ctx)
 
@@ -330,16 +310,7 @@ async def moodle_create_forum_discussion(
     ] = False,
     ctx: Context = None,
 ) -> CreatedDiscussion:
-    """
-    Create a new discussion topic in a forum.
-
-    SAFETY: This write operation is only allowed on whitelisted courses.
-    Default whitelist: [7299] (Elizabeth's Moodle Playground)
-
-    Example use cases:
-        - "Create a new discussion in forum 123 about homework"
-        - "Start a discussion thread about the assignment"
-    """
+    """Create a new discussion topic in a forum (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
 
     result = await moodle.call(
@@ -392,16 +363,7 @@ async def moodle_add_forum_post(
     ],
     ctx: Context = None,
 ) -> CreatedPost:
-    """
-    Add a reply to an existing forum discussion post.
-
-    SAFETY: This write operation is only allowed on whitelisted courses.
-    Default whitelist: [7299] (Elizabeth's Moodle Playground)
-
-    Example use cases:
-        - "Reply to post 456 with a comment"
-        - "Post a follow-up message"
-    """
+    """Reply to an existing forum discussion post (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
 
     result = await moodle.call(

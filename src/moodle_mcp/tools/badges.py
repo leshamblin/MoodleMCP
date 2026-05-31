@@ -97,13 +97,7 @@ async def moodle_get_user_badges(
     ] = False,
     ctx: Context = None,
 ) -> UserBadges:
-    """
-    Get all badges earned by a specific user.
-
-    Example use cases:
-        - "What badges has user 123 earned?"
-        - "Show my badges in course 7299"
-    """
+    """Get the badges a user has earned."""
     moodle = get_moodle_client(ctx)
     resolver = get_resolver(ctx)
     uid = await resolver.user_id(user)
@@ -152,13 +146,7 @@ async def moodle_get_user_badge_by_hash(
     ],
     ctx: Context = None,
 ) -> Badge:
-    """
-    Get detailed information about a specific badge by its unique hash.
-
-    Example use cases:
-        - "Look up badge abc123def456"
-        - "Verify a badge by its hash"
-    """
+    """Get details for a specific badge by its unique hash."""
     moodle = get_moodle_client(ctx)
 
     result = await moodle.call(

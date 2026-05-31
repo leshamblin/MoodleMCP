@@ -93,14 +93,7 @@ async def moodle_get_conversations(
     ] = 0,
     ctx: Context = None,
 ) -> ConversationList:
-    """
-    Get list of message conversations for the current user.
-
-    Example use cases:
-        - "Show my messages"
-        - "What conversations do I have?"
-        - "List my recent messages"
-    """
+    """List the current user's message conversations."""
     moodle = get_moodle_client(ctx)
 
     conversations_data = await moodle.call(
@@ -145,14 +138,7 @@ async def moodle_get_messages(
     ] = 20,
     ctx: Context = None,
 ) -> ConversationMessages:
-    """
-    Get messages from a specific conversation.
-
-    Example use cases:
-        - "Show messages from conversation 123"
-        - "Get message history for conversation 45"
-        - "Read messages in conversation 67"
-    """
+    """Get messages from a conversation."""
     moodle = get_moodle_client(ctx)
 
     messages_data = await moodle.call(
@@ -198,14 +184,7 @@ async def moodle_get_messages(
 async def moodle_get_unread_count(
     ctx: Context = None,
 ) -> UnreadCount:
-    """
-    Get count of unread messages for the current user.
-
-    Example use cases:
-        - "How many unread messages do I have?"
-        - "Check my unread messages"
-        - "Do I have new messages?"
-    """
+    """Get the current user's unread message count."""
     moodle = get_moodle_client(ctx)
 
     # core_message_get_unread_conversations_count requires the recipient user
@@ -248,16 +227,9 @@ async def moodle_send_message(
     ],
     ctx: Context = None,
 ) -> SentMessage:
-    """
-    Send a private message to a specific user.
+    """Send a private message to a user.
 
-    Messages are user-to-user communications and are not restricted
-    by course whitelist.
-
-    Example use cases:
-        - "Send a message to user 123"
-        - "Message user 456 about the assignment"
-        - "Send a private message"
+    User-to-user messaging is not restricted by the course whitelist.
     """
     moodle = get_moodle_client(ctx)
 
@@ -304,19 +276,9 @@ async def moodle_delete_conversation(
     ],
     ctx: Context = None,
 ) -> DeletedConversation:
-    """
-    Delete a conversation for the current user.
+    """Delete a conversation for the current user.
 
-    NOTE: This only deletes the conversation for the authenticated user,
-    not for other participants.
-
-    Messages are user-to-user communications and are not restricted
-    by course whitelist.
-
-    Example use cases:
-        - "Delete conversation 789"
-        - "Remove conversation with user X"
-        - "Clear conversation history"
+    User-to-user messaging is not restricted by the course whitelist.
     """
     moodle = get_moodle_client(ctx)
 
