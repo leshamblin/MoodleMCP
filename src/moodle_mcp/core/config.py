@@ -53,6 +53,11 @@ class MoodleConfig(BaseSettings):
     # In PROD, write operations are DISABLED by default
     prod_allow_writes: bool = False
 
+    # Course-independent writes (messaging, user-context calendar events) in DEV.
+    # These don't touch a whitelisted course, so they're allowed in DEV by
+    # default but blocked in PROD unless prod_allow_writes is set.
+    dev_allow_global_writes: bool = True
+
     @property
     def _parsed_dev_whitelist(self) -> list[int]:
         """Parse the dev_course_whitelist string into list of integers."""
@@ -111,6 +116,21 @@ class MoodleConfig(BaseSettings):
     def is_development(self) -> bool:
         """Returns True if using development environment (default)."""
         return not self.is_production
+
+    @property
+    def writes_globally_disabled(self) -> bool:
+        """True when NO write should be exposed at all (prod with writes off)."""
+        return self.is_production and not self.prod_allow_writes
+
+    def can_write_globally(self) -> bool:
+        """Whether course-independent writes (messaging, user calendar) are allowed.
+
+        - PROD: only if prod_allow_writes is True.
+        - DEV: allowed unless dev_allow_global_writes is explicitly False.
+        """
+        if self.is_production:
+            return self.prod_allow_writes
+        return self.dev_allow_global_writes
 
     def can_write_to_course(self, course_id: int) -> bool:
         """Check if write operations are allowed for a specific course.

@@ -130,10 +130,10 @@ def require_write_permission(course_id_param: str = 'course_id'):
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def wrapper(*args, **kwargs) -> Any:
-            # Extract course_id from kwargs
-            course_id = kwargs.get(course_id_param)
+            # Extract the course reference from kwargs
+            course_ref = kwargs.get(course_id_param)
 
-            if course_id is None:
+            if course_ref is None:
                 raise WriteOperationError(
                     f"Write operation requires '{course_id_param}' parameter"
                 )
@@ -145,11 +145,19 @@ def require_write_permission(course_id_param: str = 'course_id'):
                     "Write operation requires Context (ctx parameter)"
                 )
 
-            config = ctx.request_context.lifespan_context.get('config')
+            config = _get_config_from_ctx(ctx)
             if config is None:
                 raise WriteOperationError(
                     "Configuration not available in context"
                 )
+
+            # A course reference may be a human-friendly string (shortname /
+            # idnumber). Resolve it to the integer id before the whitelist
+            # check so write-safety is enforced on the real course id.
+            course_id = course_ref
+            if not isinstance(course_id, int):
+                from .api_helpers import get_resolver
+                course_id = await get_resolver(ctx).course_id(course_ref)
 
             # Check if write is allowed
             if not config.can_write_to_course(course_id):
@@ -163,3 +171,51 @@ def require_write_permission(course_id_param: str = 'course_id'):
 
         return wrapper
     return decorator
+
+
+def _get_config_from_ctx(ctx: "Context | None"):
+    """Best-effort config lookup from a FastMCP context (or the singleton)."""
+    if ctx is not None:
+        try:
+            cfg = ctx.request_context.lifespan_context.get('config')
+            if cfg is not None:
+                return cfg
+        except Exception:
+            pass
+    try:
+        from ..core.config import get_config
+        return get_config()
+    except Exception:
+        return None
+
+
+def require_global_write_permission(func: Callable) -> Callable:
+    """
+    Enforce write safety for course-independent writes (no course_id).
+
+    Used by tools like messaging and user-context calendar events that don't
+    target a whitelisted course. Allowed in DEV (unless
+    dev_allow_global_writes is False) and blocked in PROD unless
+    prod_allow_writes is True.
+
+    Usage:
+        @mcp.tool()
+        @handle_moodle_errors
+        @require_global_write_permission
+        async def my_global_write_tool(..., ctx: Context = None):
+            ...
+    """
+    @wraps(func)
+    async def wrapper(*args, **kwargs) -> Any:
+        ctx: Context | None = kwargs.get('ctx')
+        config = _get_config_from_ctx(ctx)
+        if config is None:
+            raise WriteOperationError("Configuration not available in context")
+        if not config.can_write_globally():
+            raise WriteOperationError(
+                "Course-independent write blocked for safety: "
+                "writes are disabled in this environment."
+            )
+        return await func(*args, **kwargs)
+
+    return wrapper
