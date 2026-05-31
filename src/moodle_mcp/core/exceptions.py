@@ -29,3 +29,11 @@ class MoodleNotFoundError(MoodleAPIError):
 class MoodlePermissionError(MoodleAPIError):
     """User lacks permission for operation."""
     pass
+
+class AmbiguousIdentifierError(MoodleValidationError):
+    """A human-friendly identifier matched more than one record."""
+    pass
+
+class IdentifierNotFoundError(MoodleNotFoundError):
+    """A human-friendly identifier matched no records."""
+    pass

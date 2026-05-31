@@ -10,6 +10,7 @@ from typing import Any, TYPE_CHECKING
 if TYPE_CHECKING:
     from fastmcp import Context
     from ..core.client import MoodleAPIClient
+    from ..core.resolvers import MoodleResolver
 
 def get_moodle_client(ctx: "Context") -> "MoodleAPIClient":
     """
@@ -95,3 +96,15 @@ async def resolve_user_id(
         site_info = await moodle.get_site_info()
         return site_info['userid']
     return user_id
+
+
+def get_resolver(ctx: "Context") -> "MoodleResolver":
+    """
+    Build a per-call MoodleResolver from the FastMCP context.
+
+    Create one per tool invocation; its caches are scoped to that call so
+    repeated lookups within the call are cheap without risking staleness
+    across calls.
+    """
+    from ..core.resolvers import MoodleResolver
+    return MoodleResolver(get_moodle_client(ctx))
