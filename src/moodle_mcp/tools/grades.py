@@ -372,11 +372,15 @@ async def moodle_get_grade_categories(
 
 @mcp.tool(
     name="moodle_save_assignment_grade",
-    description="""WRITE OPERATION - Save/update a grade for an assignment submission.
-
-⚠️ This modifies student grades! Only works on whitelisted courses.
-
-Grades a student's assignment submission with an optional feedback comment.""",
+    description=(
+        "WRITE: save or update one student's grade for an assignment, with an "
+        "optional feedback comment. Modifies real grades; only works on "
+        "write-whitelisted courses (course 7299 in DEV). 'assignment' accepts "
+        "the activity name or instance id; 'user' accepts id/username/email. "
+        "Idempotent: re-saving the same grade is safe. "
+        "Example: course=7299, assignment='Lab Report 1', "
+        "user='student@example.com', grade=92, feedback='Great work'."
+    ),
     tags={"write", "grading"},
     annotations=ToolAnnotations(
         readOnlyHint=False,
@@ -386,19 +390,19 @@ Grades a student's assignment submission with an optional feedback comment.""",
     ),
 )
 @handle_moodle_errors
-@require_write_permission('course_id')
+@require_write_permission('course')
 async def moodle_save_assignment_grade(
-    course_id: Annotated[
-        int,
-        Field(description="The course ID (must be whitelisted)", gt=0),
+    course: Annotated[
+        int | str,
+        Field(description="Course id, shortname, or name (must be whitelisted)"),
     ],
-    assignment_id: Annotated[
-        int,
-        Field(description="The assignment instance ID", gt=0),
+    assignment: Annotated[
+        int | str,
+        Field(description="Assignment name or instance id"),
     ],
-    user_id: Annotated[
-        int,
-        Field(description="The student's user ID", gt=0),
+    user: Annotated[
+        int | str,
+        Field(description="Student user id, username, or email"),
     ],
     grade: Annotated[
         float,
@@ -414,15 +418,20 @@ async def moodle_save_assignment_grade(
     ] = "released",
     ctx: Context = None,
 ) -> GradeSaveResult:
-    """Save a grade for an assignment submission."""
+    """Save a grade for an assignment submission (assignment accepts a name)."""
     moodle = get_moodle_client(ctx)
+    resolver = get_resolver(ctx)
+
+    cid = await resolver.course_id(course)
+    act = await resolver.activity(course, assignment, modname="assign")
+    uid = await resolver.user_id(user)
 
     # mod_assign_save_grade returns null on success.
     await moodle.call(
         "mod_assign_save_grade",
         {
-            "assignmentid": assignment_id,
-            "userid": user_id,
+            "assignmentid": act.instance,
+            "userid": uid,
             "grade": grade,
             "attemptnumber": -1,
             "addattempt": 0,
@@ -438,9 +447,9 @@ async def moodle_save_assignment_grade(
     )
 
     return GradeSaveResult(
-        course_id=course_id,
-        assignment_id=assignment_id,
-        user_id=user_id,
+        course_id=cid,
+        assignment_id=act.instance,
+        user_id=uid,
         grade=grade,
         feedback_saved=bool(feedback),
         workflow_state=workflow_state,
@@ -449,13 +458,14 @@ async def moodle_save_assignment_grade(
 
 @mcp.tool(
     name="moodle_update_grades",
-    description="""WRITE OPERATION - Update grades for a course activity.
-
-⚠️ This modifies student grades! Only works on whitelisted courses.
-
-Updates grades for one or more students in a gradebook activity. Note that
-activity_id is the course module id (cmid), NOT the activity instance id.
-Example: grades=[{"studentid": 456, "grade": 85}, {"studentid": 789, "grade": 92}].""",
+    description=(
+        "WRITE: bulk-update grades for many students on one activity via the "
+        "gradebook. Modifies real grades; only works on write-whitelisted "
+        "courses (course 7299 in DEV). 'activity' accepts the activity name or "
+        "its course-module id (cmid). 'grades' is a list of {studentid, grade}. "
+        "Example: course=7299, activity='Lab Report 1', component='mod_assign', "
+        "grades=[{'studentid': 624, 'grade': 88}]."
+    ),
     tags={"write", "grading"},
     annotations=ToolAnnotations(
         readOnlyHint=False,
@@ -465,19 +475,15 @@ Example: grades=[{"studentid": 456, "grade": 85}, {"studentid": 789, "grade": 92
     ),
 )
 @handle_moodle_errors
-@require_write_permission('course_id')
+@require_write_permission('course')
 async def moodle_update_grades(
-    course_id: Annotated[
-        int,
-        Field(description="The course ID (must be whitelisted)", gt=0),
+    course: Annotated[
+        int | str,
+        Field(description="Course id, shortname, or name (must be whitelisted)"),
     ],
-    component: Annotated[
-        str,
-        Field(description="The component (e.g., 'mod_assign')"),
-    ],
-    activity_id: Annotated[
-        int,
-        Field(description="The course module id (cmid) of the activity", gt=0),
+    activity: Annotated[
+        int | str,
+        Field(description="Activity name or course-module id (cmid)"),
     ],
     grades: Annotated[
         list[dict],
@@ -486,14 +492,22 @@ async def moodle_update_grades(
             min_length=1,
         ),
     ],
+    component: Annotated[
+        str,
+        Field(description="The component (e.g., 'mod_assign')"),
+    ] = "mod_assign",
     item_number: Annotated[
         int,
         Field(description="Grade item number within the activity", ge=0),
     ] = 0,
     ctx: Context = None,
 ) -> BulkGradeResult:
-    """Update grades for a course activity."""
+    """Bulk-update grades via the gradebook (activity resolves to its cmid)."""
     moodle = get_moodle_client(ctx)
+    resolver = get_resolver(ctx)
+
+    cid = await resolver.course_id(course)
+    activity_id = (await resolver.activity(course, activity)).cmid
 
     # activityid is the COURSE MODULE id (cmid), NOT the activity instance id.
     # core_grades_update_grades returns 0 (int) on success.
@@ -501,7 +515,7 @@ async def moodle_update_grades(
         "core_grades_update_grades",
         {
             "source": "mod_mcp",
-            "courseid": course_id,
+            "courseid": cid,
             "component": component,
             "activityid": activity_id,
             "itemnumber": item_number,
@@ -513,7 +527,7 @@ async def moodle_update_grades(
     )
 
     return BulkGradeResult(
-        course_id=course_id,
+        course_id=cid,
         assignment_id=activity_id,
         graded_count=len(grades),
         user_ids=[g.get("studentid") for g in grades],
