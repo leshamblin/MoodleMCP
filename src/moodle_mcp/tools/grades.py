@@ -11,7 +11,6 @@ from ..server import mcp
 from ..utils.error_handling import handle_moodle_errors, require_write_permission
 from ..utils.api_helpers import get_moodle_client, get_resolver
 from ..models.results import GradeSaveResult, BulkGradeResult
-from ..core.exceptions import MoodleNotFoundError
 
 
 @dataclass

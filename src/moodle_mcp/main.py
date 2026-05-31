@@ -35,13 +35,13 @@ async def lifespan(server: FastMCP) -> AsyncGenerator[dict, None]:
     """
     config = get_config()
 
-    print(f"Initializing Moodle MCP server...", file=sys.stderr)
+    print("Initializing Moodle MCP server...", file=sys.stderr)
     print(f"Environment: {config.environment_name}", file=sys.stderr)
 
     # SAFETY WARNING for production
     if config.is_production:
-        print(f"⚠️  WARNING: Using PRODUCTION instance!", file=sys.stderr)
-        print(f"⚠️  Set MOODLE_ENV=dev or unset to use development", file=sys.stderr)
+        print("⚠️  WARNING: Using PRODUCTION instance!", file=sys.stderr)
+        print("⚠️  Set MOODLE_ENV=dev or unset to use development", file=sys.stderr)
 
     print(f"Connecting to: {config.url}", file=sys.stderr)
 
@@ -62,7 +62,7 @@ async def lifespan(server: FastMCP) -> AsyncGenerator[dict, None]:
         print(f"✓ Version: {site_info.get('release')}", file=sys.stderr)
     except Exception as e:
         print(f"⚠ Warning: Could not verify Moodle connection: {e}", file=sys.stderr)
-        print(f"  Server will continue, but API calls may fail.", file=sys.stderr)
+        print("  Server will continue, but API calls may fail.", file=sys.stderr)
 
     # Count tools after they're registered (public API in FastMCP 3.x)
     try:
@@ -93,9 +93,13 @@ mcp = FastMCP(
 import moodle_mcp.server
 moodle_mcp.server.mcp = mcp
 
-# Import all tool modules AFTER setting mcp instance
-# These imports have side effects - they register tools with the server
-from moodle_mcp.tools import site, courses, users, grades, assignments, messages, calendar, forums, groups, enrollment, quiz, completion, badges
+# Import all tool modules AFTER setting mcp instance.
+# These imports have side effects - they register tools with the server via the
+# @mcp.tool decorator, so the names are intentionally unused (noqa: F401).
+from moodle_mcp.tools import (  # noqa: F401
+    site, courses, users, grades, assignments, messages, calendar,
+    forums, groups, enrollment, quiz, completion, badges,
+)
 
 # PROD write lockdown: when running against production with writes disabled,
 # hide every write-tagged tool from the client entirely. This is belt-and-

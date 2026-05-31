@@ -151,7 +151,7 @@ class MoodleAPIClient:
             if status == 401 or status == 403:
                 raise MoodleAuthError(f"HTTP {status}: Authentication failed")
             elif status == 404:
-                raise MoodleNotFoundError(f"HTTP 404: Resource not found")
+                raise MoodleNotFoundError("HTTP 404: Resource not found")
             else:
                 raise MoodleConnectionError(f"HTTP error {status}: {e}")
         except httpx.RequestError as e:

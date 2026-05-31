@@ -2,7 +2,7 @@
 Pydantic models for Moodle courses.
 """
 
-from pydantic import Field, field_validator
+from pydantic import Field
 
 from .base import MoodleBaseModel
 

@@ -53,21 +53,6 @@ class CourseSummary:
     enddate: int | None = None
 
 
-@dataclass
-class CourseListResult:
-    courses: list[CourseSummary]
-    count: int
-
-
-# ----------------------------------------------------------------------- users
-@dataclass
-class UserSummary:
-    id: int
-    fullname: str
-    email: str | None = None
-    username: str | None = None
-
-
 # ---------------------------------------------------------------------- grading
 @dataclass
 class GradeSaveResult:
@@ -93,12 +78,4 @@ class WriteResult:
     """Generic confirmation for a write that returns no id of its own."""
     operation: str
     ok: bool = True
-    details: dict = field(default_factory=dict)
-
-
-@dataclass
-class CreatedResult:
-    """Confirmation for a write that creates a record with an id."""
-    operation: str
-    id: int
     details: dict = field(default_factory=dict)

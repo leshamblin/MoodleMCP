@@ -3,7 +3,6 @@ Base Pydantic models for Moodle entities.
 """
 
 from pydantic import BaseModel, ConfigDict
-from enum import Enum
 
 class MoodleBaseModel(BaseModel):
     """
@@ -20,8 +19,3 @@ class MoodleBaseModel(BaseModel):
         validate_assignment=True,  # Validate when setting attributes
         str_strip_whitespace=True  # Auto-strip string whitespace
     )
-
-class ResponseFormat(str, Enum):
-    """Output format for tool responses."""
-    MARKDOWN = "markdown"
-    JSON = "json"

@@ -3,7 +3,6 @@ Configuration management using Pydantic settings.
 Loads configuration from environment variables.
 """
 
-import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class MoodleConfig(BaseSettings):

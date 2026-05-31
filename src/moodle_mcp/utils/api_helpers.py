@@ -5,7 +5,7 @@ Most API functionality is in core/client.py. This module provides
 higher-level helpers for common patterns.
 """
 
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from fastmcp import Context
