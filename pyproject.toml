@@ -18,6 +18,7 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-mock>=3.12.0",
+    "respx>=0.21.0",
 ]
 
 [build-system]
@@ -30,6 +31,10 @@ where = ["src"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "live: hits the live Moodle dev instance (course 7299); needs .env creds",
+    "offline: pure unit tests, no network",
+]
 
 [project.scripts]
 moodle-mcp = "moodle_mcp.main:main"

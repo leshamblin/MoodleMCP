@@ -35,9 +35,9 @@ class MoodleConfig(BaseSettings):
     dev_url: str
     dev_token: str
 
-    # Production instance
-    prod_url: str
-    prod_token: str
+    # Production instance (optional: a dev-only .env may omit these)
+    prod_url: str = ""
+    prod_token: str = ""
 
     # Optional settings with defaults
     api_timeout: int = 30
@@ -69,7 +69,12 @@ class MoodleConfig(BaseSettings):
         SAFETY: Only the EXACT string 'prod' (lowercase, no whitespace) triggers production.
         Any other value (including 'PROD', 'Prod', 'production', etc.) uses development.
         """
-        if self.env.lower().strip() == 'prod':
+        if self.is_production:
+            if not self.prod_url:
+                raise ValueError(
+                    "MOODLE_ENV=prod but MOODLE_PROD_URL is not set. "
+                    "Set MOODLE_PROD_URL/MOODLE_PROD_TOKEN or use MOODLE_ENV=dev."
+                )
             return self.prod_url
         return self.dev_url
 
@@ -80,7 +85,12 @@ class MoodleConfig(BaseSettings):
         SAFETY: Only the EXACT string 'prod' (lowercase, no whitespace) triggers production.
         Any other value (including 'PROD', 'Prod', 'production', etc.) uses development.
         """
-        if self.env.lower().strip() == 'prod':
+        if self.is_production:
+            if not self.prod_token:
+                raise ValueError(
+                    "MOODLE_ENV=prod but MOODLE_PROD_TOKEN is not set. "
+                    "Set MOODLE_PROD_URL/MOODLE_PROD_TOKEN or use MOODLE_ENV=dev."
+                )
             return self.prod_token
         return self.dev_token
 

@@ -87,7 +87,7 @@ def handle_moodle_errors(func: Callable) -> Callable:
                 try:
                     config = ctx.request_context.lifespan_context.get('config')
                     if config is not None:
-                        is_dev = config.is_development()
+                        is_dev = config.is_development
                 except:
                     pass  # Keep default if config access fails
 

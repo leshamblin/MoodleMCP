@@ -66,42 +66,30 @@ async def moodle_enrol_users(
     """
     moodle = get_moodle_client(ctx)
 
-    # Prepare enrollment data
-    enrolments = []
-    for idx, user_id in enumerate(user_ids):
-        enrolments.append({
-            f'enrolments[{idx}][roleid]': role_id,
-            f'enrolments[{idx}][userid]': user_id,
-            f'enrolments[{idx}][courseid]': course_id
-        })
-
-    # Flatten the enrollment data
-    params = {}
-    for enrolment in enrolments:
-        params.update(enrolment)
-
-    try:
-        # Call the manual enrolment function
-        result = await moodle._make_request(
-            'enrol_manual_enrol_users',
-            params
-        )
-
-        # Build response
-        role_names = {5: 'Student', 4: 'Teacher', 3: 'Non-editing teacher', 1: 'Manager'}
-        role_name = role_names.get(role_id, f'Role {role_id}')
-
-        response_data = {
-            'course_id': course_id,
-            'users_enrolled': len(user_ids),
-            'user_ids': user_ids,
-            'role': role_name,
-            'role_id': role_id
+    # Pass nested params; the client flattens to Moodle's bracket form.
+    # enrol_manual_enrol_users returns null on success.
+    await moodle.call(
+        'enrol_manual_enrol_users',
+        {
+            'enrolments': [
+                {'roleid': role_id, 'userid': user_id, 'courseid': course_id}
+                for user_id in user_ids
+            ]
         }
+    )
 
-        return format_response(response_data, "Users Enrolled Successfully", format)
-    except Exception as e:
-        raise Exception(f"Failed to enrol users: {str(e)}")
+    role_names = {5: 'Student', 4: 'Teacher', 3: 'Non-editing teacher', 1: 'Manager'}
+    role_name = role_names.get(role_id, f'Role {role_id}')
+
+    response_data = {
+        'course_id': course_id,
+        'users_enrolled': len(user_ids),
+        'user_ids': user_ids,
+        'role': role_name,
+        'role_id': role_id
+    }
+
+    return format_response(response_data, "Users Enrolled Successfully", format)
 
 @mcp.tool(
     name="moodle_unenrol_users",
@@ -149,32 +137,22 @@ async def moodle_unenrol_users(
     """
     moodle = get_moodle_client(ctx)
 
-    # Prepare unenrollment data
-    unenrolments = []
-    for idx, user_id in enumerate(user_ids):
-        unenrolments.append({
-            f'enrolments[{idx}][userid]': user_id,
-            f'enrolments[{idx}][courseid]': course_id
-        })
-
-    # Flatten the unenrollment data
-    params = {}
-    for unenrolment in unenrolments:
-        params.update(unenrolment)
-
-    try:
-        # Call the manual unenrolment function
-        result = await moodle._make_request(
-            'enrol_manual_unenrol_users',
-            params
-        )
-
-        response_data = {
-            'course_id': course_id,
-            'users_unenrolled': len(user_ids),
-            'user_ids': user_ids
+    # Pass nested params; the client flattens to Moodle's bracket form.
+    # enrol_manual_unenrol_users returns null on success.
+    await moodle.call(
+        'enrol_manual_unenrol_users',
+        {
+            'enrolments': [
+                {'userid': user_id, 'courseid': course_id}
+                for user_id in user_ids
+            ]
         }
+    )
 
-        return format_response(response_data, "Users Unenrolled Successfully", format)
-    except Exception as e:
-        raise Exception(f"Failed to unenrol users: {str(e)}")
+    response_data = {
+        'course_id': course_id,
+        'users_unenrolled': len(user_ids),
+        'user_ids': user_ids
+    }
+
+    return format_response(response_data, "Users Unenrolled Successfully", format)
