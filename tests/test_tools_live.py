@@ -144,6 +144,55 @@ async def test_list_assignments(all_tools, ctx):
     assert hasattr(res, "assignments")
 
 
+async def test_assignment_details_by_name(all_tools, ctx):
+    """Ergonomics: resolve an assignment by NAME + course (no id lookup)."""
+    listed = await tool(all_tools, "moodle_list_assignments")(course=COURSE, ctx=ctx)
+    if listed.count == 0:
+        pytest.skip("course 7299 has no assignments to resolve by name")
+    name = listed.assignments[0].name
+    details = await tool(all_tools, "moodle_get_assignment_details")(
+        course=COURSE, assignment=name, ctx=ctx
+    )
+    assert details.name == name
+    assert details.id > 0
+
+
+async def test_save_grade_by_name(all_tools, ctx):
+    """Ergonomics + write: grade a real enrolled user by assignment NAME.
+
+    Grading is idempotent, so this is safe to re-run. The assignment and the
+    user are both discovered from course 7299, so no ids are hard-coded.
+    """
+    listed = await tool(all_tools, "moodle_list_assignments")(course=COURSE, ctx=ctx)
+    if listed.count == 0:
+        pytest.skip("course 7299 has no assignments")
+    assignment_name = listed.assignments[0].name
+
+    enrolled = await tool(all_tools, "moodle_get_enrolled_users")(course=COURSE, ctx=ctx)
+    if not enrolled.users:
+        pytest.skip("course 7299 has no enrolled users")
+    students = [u for u in enrolled.users if "student" in (u.roles or [])]
+    target = (students or enrolled.users)[0]
+
+    result = await tool(all_tools, "moodle_save_assignment_grade")(
+        course=COURSE, assignment=assignment_name, user=target.id,
+        grade=85.0, feedback="auto-test", ctx=ctx,
+    )
+    assert result.user_id == target.id
+    assert result.grade == 85.0
+    assert result.feedback_saved is True
+
+
+async def test_student_overview_one_call(all_tools, ctx):
+    """One aggregate call returns courses (+ events/grades) without chaining."""
+    res = await tool(all_tools, "moodle_get_student_overview")(ctx=ctx)
+    assert res.user_id > 0
+    assert res.course_count == len(res.courses)
+    assert res.course_count >= 1
+    assert isinstance(res.upcoming_events, list)
+    assert isinstance(res.recent_grades, list)
+
+
 # --------------------------------------------------------------------- calendar
 async def test_upcoming_events(all_tools, ctx):
     res = await tool(all_tools, "moodle_get_upcoming_events")(ctx=ctx)
@@ -177,8 +226,8 @@ async def test_unread_count(all_tools, ctx):
         ("moodle_unenrol_users", {"course_id": BLOCKED_COURSE, "user_ids": [1]}),
         ("moodle_create_groups", {"course_id": BLOCKED_COURSE, "groups": [{"name": "x"}]}),
         ("moodle_create_calendar_event", {"course_id": BLOCKED_COURSE, "event_name": "x", "event_time": 1893456000}),
-        ("moodle_save_assignment_grade", {"course_id": BLOCKED_COURSE, "assignment_id": 1, "user_id": 1, "grade": 50}),
-        ("moodle_start_quiz_attempt", {"course_id": BLOCKED_COURSE, "quiz_id": 1}),
+        ("moodle_save_assignment_grade", {"course": BLOCKED_COURSE, "assignment": 1, "user": 1, "grade": 50}),
+        ("moodle_start_quiz_attempt", {"course": BLOCKED_COURSE, "quiz": 1}),
         ("moodle_create_forum_discussion", {"course_id": BLOCKED_COURSE, "forum_id": 1, "subject": "x", "message": "y"}),
     ],
 )

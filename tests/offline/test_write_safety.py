@@ -79,4 +79,4 @@ async def test_course_write_blocked_for_non_whitelisted_course():
     save = get_tool_by_name(mcp, "moodle_save_assignment_grade")
     with pytest.raises(ToolError, match="blocked for safety"):
         # course 9999 is not in the whitelist; blocked before any API call.
-        await save(course_id=9999, assignment_id=1, user_id=1, grade=50.0, ctx=ctx)
+        await save(course=9999, assignment=1, user=1, grade=50.0, ctx=ctx)
