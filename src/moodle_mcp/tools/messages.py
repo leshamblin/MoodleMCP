@@ -204,9 +204,12 @@ async def moodle_get_unread_count(
     """
     moodle = get_moodle_client(ctx)
 
+    # core_message_get_unread_conversations_count requires the recipient user
+    # id under the key `useridto` (it does not accept 0 for "current user").
+    info = await moodle.get_site_info()
     unread_data = await moodle.call(
         "core_message_get_unread_conversations_count",
-        {"userid": 0},  # 0 = current user
+        {"useridto": info["userid"]},
     )
 
     count = unread_data if isinstance(unread_data, int) else (unread_data or {}).get("count", 0)
