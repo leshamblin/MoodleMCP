@@ -144,9 +144,10 @@ async def moodle_get_quizzes(
 @mcp.tool(
     name="moodle_get_quiz_attempts",
     description=(
-        "Get a user's attempts for a quiz. REQUIRED: quiz_id (the quiz "
-        "instance id). Optional: user (id/username/email; omit for current "
-        "user), status (all/finished/unfinished)."
+        "Get a user's attempts for a quiz. Pass course plus the quiz name "
+        "(recommended), or a quiz instance id directly. Optional: user "
+        "(id/username/email; omit for current user), status "
+        "(all/finished/unfinished). Example: course='Physics', quiz='Midterm'."
     ),
     tags={"read"},
     annotations=ToolAnnotations(
@@ -156,13 +157,22 @@ async def moodle_get_quizzes(
 )
 @handle_moodle_errors
 async def moodle_get_quiz_attempts(
-    quiz_id: Annotated[int, Field(description="Quiz instance id", gt=0)],
+    quiz: Annotated[int | str, Field(description="Quiz name (with course) or instance id")],
+    course: Annotated[int | str | None, Field(description="Course id, shortname, or name (required if quiz is a name)")] = None,
     user: Annotated[int | str | None, Field(description="User id/username/email; omit for current user")] = None,
     status: Annotated[str, Field(description="Attempt status: all, finished, or unfinished")] = "all",
     ctx: Context = None,
 ) -> QuizAttemptList:
     moodle = get_moodle_client(ctx)
-    uid = await get_resolver(ctx).user_id(user)
+    resolver = get_resolver(ctx)
+    uid = await resolver.user_id(user)
+    if course is not None:
+        quiz_id = (await resolver.activity(course, quiz, modname="quiz")).instance
+    elif isinstance(quiz, int):
+        quiz_id = quiz
+    else:
+        from ..core.exceptions import MoodleNotFoundError
+        raise MoodleNotFoundError("Pass 'course' when identifying a quiz by name.")
     data = await moodle.call(
         "mod_quiz_get_user_attempts",
         {"quizid": quiz_id, "userid": uid, "status": status},
@@ -223,9 +233,11 @@ async def moodle_get_quiz_attempt_data(
 @mcp.tool(
     name="moodle_start_quiz_attempt",
     description=(
-        "Start a new quiz attempt. REQUIRED: course_id, quiz_id (the quiz "
-        "instance id). WRITE OPERATION - whitelisted courses only. Returns the "
-        "new attempt id for saving/submitting answers."
+        "WRITE: start a new quiz attempt for the current user. Only works on "
+        "write-whitelisted courses (course 7299 in DEV). 'quiz' accepts the "
+        "quiz name or its instance id. Returns the new attempt id; then call "
+        "moodle_get_quiz_attempt_data to discover answer field names. "
+        "Example: course=7299, quiz='Practice Quiz'."
     ),
     tags={"write", "quiz"},
     annotations=ToolAnnotations(
@@ -234,13 +246,15 @@ async def moodle_get_quiz_attempt_data(
     ),
 )
 @handle_moodle_errors
-@require_write_permission("course_id")
+@require_write_permission("course")
 async def moodle_start_quiz_attempt(
-    course_id: Annotated[int, Field(description="Course ID (whitelisted)", gt=0)],
-    quiz_id: Annotated[int, Field(description="Quiz instance id", gt=0)],
+    course: Annotated[int | str, Field(description="Course id, shortname, or name (must be whitelisted)")],
+    quiz: Annotated[int | str, Field(description="Quiz name or instance id")],
     ctx: Context = None,
 ) -> StartedAttempt:
     moodle = get_moodle_client(ctx)
+    resolver = get_resolver(ctx)
+    quiz_id = (await resolver.activity(course, quiz, modname="quiz")).instance
     data = await moodle.call("mod_quiz_start_attempt", {"quizid": quiz_id})
     attempt = data.get("attempt", {}) if isinstance(data, dict) else {}
     return StartedAttempt(
@@ -253,10 +267,10 @@ async def moodle_start_quiz_attempt(
 @mcp.tool(
     name="moodle_save_quiz_answers",
     description=(
-        "Save answers during a quiz attempt (auto-save, not final). REQUIRED: "
-        "course_id, attempt_id, answers (list of {name, value} entries). Get "
-        "the field names from moodle_get_quiz_attempt_data first. WRITE "
-        "OPERATION - whitelisted courses only."
+        "WRITE: save answers during a quiz attempt (auto-save, not final). "
+        "REQUIRED: course (whitelisted), attempt_id, answers (list of "
+        "{name, value} entries). Get the field names from "
+        "moodle_get_quiz_attempt_data first. Whitelisted courses only."
     ),
     tags={"write", "quiz"},
     annotations=ToolAnnotations(
@@ -265,9 +279,9 @@ async def moodle_start_quiz_attempt(
     ),
 )
 @handle_moodle_errors
-@require_write_permission("course_id")
+@require_write_permission("course")
 async def moodle_save_quiz_answers(
-    course_id: Annotated[int, Field(description="Course ID (whitelisted)", gt=0)],
+    course: Annotated[int | str, Field(description="Course id, shortname, or name (must be whitelisted)")],
     attempt_id: Annotated[int, Field(description="Quiz attempt id", gt=0)],
     answers: Annotated[
         list[dict],
@@ -287,10 +301,10 @@ async def moodle_save_quiz_answers(
 @mcp.tool(
     name="moodle_submit_quiz",
     description=(
-        "Submit a quiz attempt for grading (final, cannot be undone). "
-        "REQUIRED: course_id, attempt_id. Optional: answers (list of "
-        "{name, value}) to submit with the finish. WRITE OPERATION - "
-        "DESTRUCTIVE - whitelisted courses only."
+        "WRITE (destructive): submit a quiz attempt for grading (final, cannot "
+        "be undone). REQUIRED: course (whitelisted), attempt_id. Optional: "
+        "answers (list of {name, value}) to submit with the finish. "
+        "Whitelisted courses only."
     ),
     tags={"write", "quiz", "destructive"},
     annotations=ToolAnnotations(
@@ -299,9 +313,9 @@ async def moodle_save_quiz_answers(
     ),
 )
 @handle_moodle_errors
-@require_write_permission("course_id")
+@require_write_permission("course")
 async def moodle_submit_quiz(
-    course_id: Annotated[int, Field(description="Course ID (whitelisted)", gt=0)],
+    course: Annotated[int | str, Field(description="Course id, shortname, or name (must be whitelisted)")],
     attempt_id: Annotated[int, Field(description="Quiz attempt id", gt=0)],
     answers: Annotated[
         list[dict] | None,
