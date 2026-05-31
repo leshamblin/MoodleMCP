@@ -6,7 +6,6 @@ automatically discovering all registered tools from the MCP instance.
 """
 
 from typing import Any, Callable
-from fastmcp import Context
 from moodle_mcp.core.client import MoodleAPIClient
 from moodle_mcp.core.config import get_config
 

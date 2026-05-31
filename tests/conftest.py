@@ -43,8 +43,10 @@ moodle_mcp.server.mcp = FastMCP(
     lifespan=test_lifespan
 )
 
-# Import all tool modules to register tools with the test mcp instance
-from moodle_mcp.tools import (
+# Import all tool modules to register tools with the test mcp instance.
+# Side-effect imports (the @mcp.tool decorators register on import), so the
+# names are intentionally unused (noqa: F401).
+from moodle_mcp.tools import (  # noqa: F401
     site, courses, users, grades, assignments, messages,
     calendar, forums, groups, enrollment, quiz, completion, badges,
     dashboard,
