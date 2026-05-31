@@ -2,50 +2,228 @@
 Course management tools - READ and WRITE operations for courses and categories.
 """
 
-from pydantic import Field
+from dataclasses import dataclass, field
+from typing import Annotated
+
 from fastmcp import Context
+from mcp.types import ToolAnnotations
+from pydantic import Field
 
 from ..server import mcp
+from ..core.exceptions import MoodleNotFoundError
 from ..utils.error_handling import handle_moodle_errors, require_write_permission
-from ..utils.api_helpers import get_moodle_client, resolve_user_id
-from ..utils.formatting import format_response
-from ..models.base import ResponseFormat
-from ..models.courses import Course, CourseCategory, CourseSection, CourseModule
+from ..utils.api_helpers import get_moodle_client, get_resolver
+from ..models.courses import Course, CourseCategory, CourseSection
+
+
+# --------------------------------------------------------------------------- #
+# Local structured-output models (FastMCP 3.x).
+# Kept here (not in models/results.py) since they're specific to course tools.
+# --------------------------------------------------------------------------- #
+@dataclass
+class CourseSummary:
+    id: int
+    fullname: str | None = None
+    shortname: str | None = None
+    categoryid: int | None = None
+    categoryname: str | None = None
+    startdate: int | None = None
+    enddate: int | None = None
+    visible: bool | None = None
+    summary: str | None = None
+    format: str | None = None
+
+
+@dataclass
+class CourseList:
+    courses: list[CourseSummary] = field(default_factory=list)
+    count: int = 0
+
+
+@dataclass
+class CourseSearchResult:
+    courses: list[CourseSummary] = field(default_factory=list)
+    total: int = 0
+    showing: int = 0
+
+
+@dataclass
+class CourseDetails:
+    id: int
+    fullname: str | None = None
+    shortname: str | None = None
+    categoryid: int | None = None
+    categoryname: str | None = None
+    startdate: int | None = None
+    enddate: int | None = None
+    visible: bool | None = None
+    summary: str | None = None
+    format: str | None = None
+    numsections: int | None = None
+    showgrades: bool | None = None
+    groupmode: int | None = None
+
+
+@dataclass
+class ModuleInfo:
+    id: int
+    name: str | None = None
+    modname: str | None = None
+    url: str | None = None
+    visible: int | None = None
+    uservisible: bool | None = None
+
+
+@dataclass
+class SectionInfo:
+    id: int
+    name: str | None = None
+    section: int = 0
+    summary: str | None = None
+    visible: int | None = None
+    modules: list[ModuleInfo] = field(default_factory=list)
+
+
+@dataclass
+class CourseContents:
+    course_id: int
+    sections: list[SectionInfo] = field(default_factory=list)
+    count: int = 0
+
+
+@dataclass
+class EnrolledUser:
+    id: int
+    fullname: str | None = None
+    email: str | None = None
+    roles: list[str] = field(default_factory=list)
+
+
+@dataclass
+class EnrolledUsers:
+    course_id: int
+    users: list[EnrolledUser] = field(default_factory=list)
+    total: int = 0
+    showing: int = 0
+    offset: int = 0
+
+
+@dataclass
+class CategoryInfo:
+    id: int
+    name: str | None = None
+    parent: int | None = None
+    description: str | None = None
+    coursecount: int | None = None
+    depth: int | None = None
+
+
+@dataclass
+class CategoryList:
+    categories: list[CategoryInfo] = field(default_factory=list)
+    count: int = 0
+
+
+@dataclass
+class CourseCreated:
+    course_id: int | None = None
+    fullname: str | None = None
+    shortname: str | None = None
+    category_id: int | None = None
+    visible: bool | None = None
+
+
+@dataclass
+class CourseUpdated:
+    course_id: int
+    updated: bool = True
+
+
+@dataclass
+class CourseDeleted:
+    course_id: int
+    deleted: bool = True
+    warning: str = "Course has been permanently deleted"
+
+
+@dataclass
+class CourseDuplicated:
+    source_course_id: int
+    new_course_id: int | None = None
+    fullname: str | None = None
+    shortname: str | None = None
+
+
+@dataclass
+class CourseImported:
+    source_course_id: int
+    dest_course_id: int
+    imported: bool = True
+
+
+@dataclass
+class CategoryCreated:
+    category_id: int | None = None
+    name: str | None = None
+    parent_id: int | None = None
+    visible: bool | None = None
+
+
+@dataclass
+class CategoryDeleted:
+    category_id: int
+    deleted: bool = True
+    recursive: bool = False
+    warning: str = "Category has been permanently deleted"
+
+
+def _course_summary(course: Course) -> CourseSummary:
+    """Build a CourseSummary from a parsed Course model."""
+    return CourseSummary(
+        id=course.id,
+        fullname=course.fullname,
+        shortname=course.shortname,
+        categoryid=course.categoryid,
+        categoryname=course.categoryname,
+        startdate=course.startdate,
+        enddate=course.enddate,
+        visible=course.visible,
+        summary=course.summary,
+        format=course.format,
+    )
+
+
+# ============================================================================
+# READ OPERATIONS
+# ============================================================================
 
 @mcp.tool(
     name="moodle_list_user_courses",
-    description="List all courses where a user is enrolled. REQUIRED: user_id (integer). Optional: include_hidden (boolean, default=False), format (default='markdown'). Example: user_id=624. Use moodle_get_current_user or moodle_get_site_info to get user_id. Returns course IDs needed for other course tools.",
-    annotations={
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True
-    }
+    description=(
+        "List all courses where a user is enrolled. Accepts a numeric user id, "
+        "a username, or an email (omit for the current user). Optional: "
+        "include_hidden (default False). Example: user=624 or user='jdoe'. "
+        "Returns course ids needed for other course tools."
+    ),
+    tags={"read"},
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False,
+        idempotentHint=True, openWorldHint=True,
+    ),
 )
 @handle_moodle_errors
 async def moodle_list_user_courses(
-    user_id: int | None = Field(None, description="User ID (omit for current user)"),
-    include_hidden: bool = Field(False, description="Include hidden courses"),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    user: Annotated[
+        int | str | None,
+        Field(description="User id, username, or email; omit for current user"),
+    ] = None,
+    include_hidden: Annotated[
+        bool, Field(description="Include hidden courses")
+    ] = False,
+    ctx: Context = None,
+) -> CourseList:
     """
     Get list of courses where a user is enrolled.
-
-    Returns all courses for the authenticated user (or specified user), including:
-    - Course ID, name, and category
-    - Start and end dates
-    - Visibility status
-    - Course format
-
-    Args:
-        user_id: Optional user ID (defaults to current authenticated user)
-        include_hidden: Whether to include hidden courses
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        Formatted list of enrolled courses
 
     Example use cases:
         - "What courses am I enrolled in?"
@@ -53,57 +231,43 @@ async def moodle_list_user_courses(
         - "Show courses for user ID 123"
     """
     moodle = get_moodle_client(ctx)
+    resolver = get_resolver(ctx)
+    uid = await resolver.user_id(user)
 
-    # Resolve user_id (defaults to current user if None)
-    user_id = await resolve_user_id(moodle, user_id)
-
-    # Get user's courses
-    courses_data = await moodle._make_request(
-        'core_enrol_get_users_courses',
-        {'userid': user_id}
+    courses_data = await moodle.call(
+        "core_enrol_get_users_courses", {"userid": uid}
     )
 
-    # Parse courses
-    courses = [Course(**course) for course in courses_data]
-
-    # Filter hidden courses if requested
+    courses = [Course(**course) for course in (courses_data or [])]
     if not include_hidden:
         courses = [c for c in courses if c.visible]
 
-    if len(courses) == 0:
-        return f"No courses found for user {user_id}."
+    summaries = [_course_summary(c) for c in courses]
+    return CourseList(courses=summaries, count=len(summaries))
 
-    response_data = {"courses": [c.model_dump() for c in courses], "count": len(courses)}
-    return format_response(response_data, f"Enrolled Courses (User {user_id})", format)
 
 @mcp.tool(
     name="moodle_get_course_details",
-    description="Get detailed course information including name, description, dates, format, and settings. REQUIRED: course_id (integer). Example: course_id=2292. Use moodle_list_user_courses to discover course IDs.",
-    annotations={
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True
-    }
+    description=(
+        "Get detailed course information including name, description, dates, "
+        "format, and settings. Accepts a numeric course id, shortname, or "
+        "idnumber. Example: course=2292 or course='CS101'."
+    ),
+    tags={"read"},
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False,
+        idempotentHint=True, openWorldHint=True,
+    ),
 )
 @handle_moodle_errors
 async def moodle_get_course_details(
-    course_id: int = Field(description="Course ID to retrieve", gt=0),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    course: Annotated[
+        int | str, Field(description="Course id, shortname, or idnumber")
+    ],
+    ctx: Context = None,
+) -> CourseDetails:
     """
     Get comprehensive details for a specific course.
-
-    Retrieves full course information including description, dates, settings, and enrollment info.
-
-    Args:
-        course_id: Course ID
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        Detailed course information
 
     Example use cases:
         - "Get details for course 42"
@@ -111,50 +275,58 @@ async def moodle_get_course_details(
         - "What is the description of course 8?"
     """
     moodle = get_moodle_client(ctx)
+    resolver = get_resolver(ctx)
+    cid = await resolver.course_id(course)
 
-    # Get course by ID
-    courses_data = await moodle._make_request(
-        'core_course_get_courses',
-        {'options[ids][0]': course_id}
+    courses_data = await moodle.call(
+        "core_course_get_courses", {"options": {"ids": [cid]}}
+    )
+    if not courses_data:
+        raise MoodleNotFoundError(f"Course {cid} not found.")
+
+    c = Course(**courses_data[0])
+    return CourseDetails(
+        id=c.id,
+        fullname=c.fullname,
+        shortname=c.shortname,
+        categoryid=c.categoryid,
+        categoryname=c.categoryname,
+        startdate=c.startdate,
+        enddate=c.enddate,
+        visible=c.visible,
+        summary=c.summary,
+        format=c.format,
+        numsections=c.numsections,
+        showgrades=c.showgrades,
+        groupmode=c.groupmode,
     )
 
-    if not courses_data:
-        return f"Course {course_id} not found."
-
-    course = Course(**courses_data[0])
-
-    return format_response(course.model_dump(), f"Course Details: {course.fullname}", format)
 
 @mcp.tool(
     name="moodle_search_courses",
-    description="Search for courses by name or description. REQUIRED: search_query (string, min 1 char). Optional: limit (integer, 1-100, default=20). Example: search_query='Python'. Returns course IDs that can be used with other course tools.",
-    annotations={
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True
-    }
+    description=(
+        "Search for courses by name or description. Provide at least 1 "
+        "character. Optional: limit (1-100, default 20). "
+        "Example: search_query='Python'. Returns course ids."
+    ),
+    tags={"read"},
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False,
+        idempotentHint=True, openWorldHint=True,
+    ),
 )
 @handle_moodle_errors
 async def moodle_search_courses(
-    search_query: str = Field(description="Search term for course name/description", min_length=1),
-    limit: int = Field(default=20, description="Maximum results", ge=1, le=100),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    search_query: Annotated[
+        str, Field(description="Search term for course name/description", min_length=1)
+    ],
+    limit: Annotated[
+        int, Field(description="Maximum results", ge=1, le=100)
+    ] = 20,
+    ctx: Context = None,
+) -> CourseSearchResult:
     """
     Search for courses by name or description.
-
-    Searches across course names, short names, and descriptions.
-
-    Args:
-        search_query: Search term
-        limit: Maximum number of results
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        List of matching courses
 
     Example use cases:
         - "Search for courses about Python"
@@ -163,59 +335,43 @@ async def moodle_search_courses(
     """
     moodle = get_moodle_client(ctx)
 
-    # Search courses
-    search_data = await moodle._make_request(
-        'core_course_search_courses',
-        {
-            'criterianame': 'search',
-            'criteriavalue': search_query
-        }
+    search_data = await moodle.call(
+        "core_course_search_courses",
+        {"criterianame": "search", "criteriavalue": search_query},
     )
 
-    courses_data = search_data.get('courses', [])
-    total = search_data.get('total', len(courses_data))
+    courses_data = (search_data or {}).get("courses", [])
+    total = (search_data or {}).get("total", len(courses_data))
 
-    # Parse and limit results
     courses = [Course(**course) for course in courses_data[:limit]]
+    summaries = [_course_summary(c) for c in courses]
+    return CourseSearchResult(
+        courses=summaries, total=total, showing=len(summaries)
+    )
 
-    if len(courses) == 0:
-        return f"No courses found matching '{search_query}'."
-
-    response_data = {"courses": [c.model_dump() for c in courses], "total": total, "showing": len(courses)}
-    return format_response(response_data, f"Search Results: '{search_query}' ({len(courses)} of {total})", format)
 
 @mcp.tool(
     name="moodle_get_course_contents",
-    description="Get full course content structure including sections, modules, activities, and resources. REQUIRED: course_id (integer). Example: course_id=2292. Use moodle_list_user_courses to get course_id.",
-    annotations={
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True
-    }
+    description=(
+        "Get full course content structure including sections, modules, "
+        "activities, and resources. Accepts a numeric course id, shortname, "
+        "or idnumber. Example: course=2292 or course='CS101'."
+    ),
+    tags={"read"},
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False,
+        idempotentHint=True, openWorldHint=True,
+    ),
 )
 @handle_moodle_errors
 async def moodle_get_course_contents(
-    course_id: int = Field(description="Course ID", gt=0),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    course: Annotated[
+        int | str, Field(description="Course id, shortname, or idnumber")
+    ],
+    ctx: Context = None,
+) -> CourseContents:
     """
     Get complete course structure with sections, modules, and activities.
-
-    Retrieves the course outline including:
-    - All sections/topics
-    - Modules and activities in each section
-    - Module names and types (assignments, quizzes, forums, etc.)
-    - Visibility and availability
-
-    Args:
-        course_id: Course ID
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        Course structure and contents
 
     Example use cases:
         - "Show me the structure of course 42"
@@ -223,53 +379,70 @@ async def moodle_get_course_contents(
         - "List all sections in course 8"
     """
     moodle = get_moodle_client(ctx)
+    resolver = get_resolver(ctx)
+    cid = await resolver.course_id(course)
 
-    # Get course contents
-    contents_data = await moodle._make_request(
-        'core_course_get_contents',
-        {'courseid': course_id}
+    contents_data = await moodle.call(
+        "core_course_get_contents", {"courseid": cid}
     )
-
     if not contents_data:
-        return f"No content found for course {course_id}."
+        raise MoodleNotFoundError(f"No content found for course {cid}.")
 
-    # Parse sections
-    sections = [CourseSection(**section) for section in contents_data]
+    sections: list[SectionInfo] = []
+    for raw_section in contents_data:
+        s = CourseSection(**raw_section)
+        sections.append(
+            SectionInfo(
+                id=s.id,
+                name=s.name,
+                section=s.section,
+                summary=s.summary,
+                visible=s.visible,
+                modules=[
+                    ModuleInfo(
+                        id=m.id,
+                        name=m.name,
+                        modname=m.modname,
+                        url=m.url,
+                        visible=m.visible,
+                        uservisible=m.uservisible,
+                    )
+                    for m in s.modules
+                ],
+            )
+        )
 
-    return format_response([s.model_dump() for s in sections], f"Course Contents (Course {course_id})", format)
+    return CourseContents(course_id=cid, sections=sections, count=len(sections))
+
 
 @mcp.tool(
     name="moodle_get_enrolled_users",
-    description="Get list of all users enrolled in a course. REQUIRED: course_id (integer). Optional: limit (1-100, default=20), offset (default=0). Example: course_id=2292. Returns user IDs.",
-    annotations={
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True
-    }
+    description=(
+        "Get list of all users enrolled in a course. Accepts a numeric course "
+        "id, shortname, or idnumber. Optional: limit (1-100, default 20), "
+        "offset (default 0). Example: course=2292. Returns user ids."
+    ),
+    tags={"read"},
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False,
+        idempotentHint=True, openWorldHint=True,
+    ),
 )
 @handle_moodle_errors
 async def moodle_get_enrolled_users(
-    course_id: int = Field(description="Course ID", gt=0),
-    limit: int = Field(default=20, description="Maximum results", ge=1, le=100),
-    offset: int = Field(default=0, description="Offset for pagination", ge=0),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    course: Annotated[
+        int | str, Field(description="Course id, shortname, or idnumber")
+    ],
+    limit: Annotated[
+        int, Field(description="Maximum results", ge=1, le=100)
+    ] = 20,
+    offset: Annotated[
+        int, Field(description="Offset for pagination", ge=0)
+    ] = 0,
+    ctx: Context = None,
+) -> EnrolledUsers:
     """
     Get list of users enrolled in a course.
-
-    Returns enrolled students, teachers, and other participants.
-
-    Args:
-        course_id: Course ID
-        limit: Maximum number of users to return
-        offset: Offset for pagination
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        List of enrolled users
 
     Example use cases:
         - "Who is enrolled in course 42?"
@@ -277,54 +450,52 @@ async def moodle_get_enrolled_users(
         - "Show participants in course 8"
     """
     moodle = get_moodle_client(ctx)
+    resolver = get_resolver(ctx)
+    cid = await resolver.course_id(course)
 
-    # Get enrolled users
-    users_data = await moodle._make_request(
-        'core_enrol_get_enrolled_users',
-        {'courseid': course_id}
+    users_data = await moodle.call(
+        "core_enrol_get_enrolled_users", {"courseid": cid}
+    )
+    users_data = users_data or []
+
+    total = len(users_data)
+    page = users_data[offset:offset + limit]
+
+    users = [
+        EnrolledUser(
+            id=u.get("id", 0),
+            fullname=u.get("fullname"),
+            email=u.get("email"),
+            roles=[r.get("shortname", "") for r in (u.get("roles", []) or [])],
+        )
+        for u in page
+    ]
+
+    return EnrolledUsers(
+        course_id=cid,
+        users=users,
+        total=total,
+        showing=len(users),
+        offset=offset,
     )
 
-    if not users_data:
-        return f"No users found in course {course_id}."
-
-    # Apply pagination
-    total = len(users_data)
-    users_page = users_data[offset:offset+limit]
-
-    response_data = {
-        "users": users_page,
-        "total": total,
-        "showing": len(users_page),
-        "offset": offset
-    }
-    return format_response(response_data, f"Enrolled Users (Course {course_id})", format)
 
 @mcp.tool(
     name="moodle_get_course_categories",
-    description="Get all course categories from the Moodle site. NO PARAMETERS REQUIRED. Optional: format (default='markdown'). Useful for browsing course organization and discovering category IDs.",
-    annotations={
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True
-    }
+    description=(
+        "Get all course categories from the Moodle site. No parameters. "
+        "Useful for browsing course organization and discovering category ids."
+    ),
+    tags={"read"},
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False,
+        idempotentHint=True, openWorldHint=True,
+    ),
 )
 @handle_moodle_errors
-async def moodle_get_course_categories(
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+async def moodle_get_course_categories(ctx: Context = None) -> CategoryList:
     """
     Get list of all course categories.
-
-    Returns category information including name, description, parent category, and course count.
-
-    Args:
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        List of course categories
 
     Example use cases:
         - "What course categories exist?"
@@ -333,46 +504,52 @@ async def moodle_get_course_categories(
     """
     moodle = get_moodle_client(ctx)
 
-    # Get categories
-    categories_data = await moodle._make_request('core_course_get_categories')
-
+    categories_data = await moodle.call("core_course_get_categories")
     if not categories_data:
-        return "No categories found."
+        return CategoryList(categories=[], count=0)
 
     categories = [CourseCategory(**cat) for cat in categories_data]
+    infos = [
+        CategoryInfo(
+            id=c.id,
+            name=c.name,
+            parent=c.parent,
+            description=c.description,
+            coursecount=c.coursecount,
+            depth=c.depth,
+        )
+        for c in categories
+    ]
+    return CategoryList(categories=infos, count=len(infos))
 
-    return format_response([c.model_dump() for c in categories], "Course Categories", format)
 
 @mcp.tool(
     name="moodle_get_recent_courses",
-    description="Get recently accessed courses for a user, sorted by most recent access. REQUIRED: user_id (integer). Optional: limit (1-50, default=10). Example: user_id=624. Use moodle_get_current_user to get user_id.",
-    annotations={
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True
-    }
+    description=(
+        "Get recently accessed courses for a user, sorted by most recent "
+        "access. Accepts a numeric user id, a username, or an email (omit for "
+        "the current user). Optional: limit (1-50, default 10). Example: "
+        "user=624 or user='jdoe'."
+    ),
+    tags={"read"},
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False,
+        idempotentHint=True, openWorldHint=True,
+    ),
 )
 @handle_moodle_errors
 async def moodle_get_recent_courses(
-    user_id: int | None = Field(None, description="User ID (omit for current user)"),
-    limit: int = Field(default=10, description="Maximum results", ge=1, le=50),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    user: Annotated[
+        int | str | None,
+        Field(description="User id, username, or email; omit for current user"),
+    ] = None,
+    limit: Annotated[
+        int, Field(description="Maximum results", ge=1, le=50)
+    ] = 10,
+    ctx: Context = None,
+) -> CourseList:
     """
     Get recently accessed courses for a user.
-
-    Returns courses sorted by most recent access.
-
-    Args:
-        user_id: Optional user ID (defaults to current user)
-        limit: Maximum number of courses to return
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        List of recently accessed courses
 
     Example use cases:
         - "What courses did I recently access?"
@@ -380,29 +557,24 @@ async def moodle_get_recent_courses(
         - "List recently viewed courses"
     """
     moodle = get_moodle_client(ctx)
+    resolver = get_resolver(ctx)
+    uid = await resolver.user_id(user)
 
-    # Resolve user_id (defaults to current user if None)
-    user_id = await resolve_user_id(moodle, user_id)
-
-    # Get recent courses
     try:
-        recent_data = await moodle._make_request(
-            'core_course_get_recent_courses',
-            {'userid': user_id, 'limit': limit}
+        recent_data = await moodle.call(
+            "core_course_get_recent_courses", {"userid": uid, "limit": limit}
         )
-        courses = [Course(**course) for course in recent_data]
+        courses = [Course(**course) for course in (recent_data or [])]
     except Exception:
-        # Fallback to all user courses if recent courses function not available
-        courses_data = await moodle._make_request(
-            'core_enrol_get_users_courses',
-            {'userid': user_id}
+        # Fallback to all user courses if recent courses function not available.
+        courses_data = await moodle.call(
+            "core_enrol_get_users_courses", {"userid": uid}
         )
-        courses = [Course(**course) for course in courses_data[:limit]]
+        courses = [Course(**course) for course in (courses_data or [])[:limit]]
 
-    if len(courses) == 0:
-        return f"No recent courses found for user {user_id}."
+    summaries = [_course_summary(c) for c in courses]
+    return CourseList(courses=summaries, count=len(summaries))
 
-    return format_response([c.model_dump() for c in courses], f"Recent Courses (User {user_id})", format)
 
 # ============================================================================
 # WRITE OPERATIONS - Course and Category Administration
@@ -412,43 +584,43 @@ async def moodle_get_recent_courses(
 
 @mcp.tool(
     name="moodle_create_course",
-    description="Create a new course (requires admin permissions). REQUIRED: fullname (string), shortname (string), category_id (integer). Optional: summary, format, visible. ADMIN ONLY - requires admin permissions in Moodle. Returns the new course ID.",
-    annotations={
-        "readOnlyHint": False,
-        "destructiveHint": False,
-        "idempotentHint": False,
-        "openWorldHint": False
-    }
+    description=(
+        "Create a new course (requires admin permissions). REQUIRED: fullname, "
+        "shortname, category_id. Optional: summary, course_format, visible. "
+        "ADMIN ONLY. Returns the new course id."
+    ),
+    tags={"write", "course"},
+    annotations=ToolAnnotations(
+        readOnlyHint=False, destructiveHint=False,
+        idempotentHint=False, openWorldHint=False,
+    ),
 )
 @handle_moodle_errors
 async def moodle_create_course(
-    fullname: str = Field(description="Full name of the course", min_length=1),
-    shortname: str = Field(description="Short name/code for the course", min_length=1),
-    category_id: int = Field(description="Category ID where course will be created", gt=0),
-    summary: str | None = Field(None, description="Course summary/description"),
-    course_format: str = Field(default="topics", description="Course format (topics, weeks, social)"),
-    visible: bool = Field(default=True, description="Whether course is visible to students"),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    fullname: Annotated[
+        str, Field(description="Full name of the course", min_length=1)
+    ],
+    shortname: Annotated[
+        str, Field(description="Short name/code for the course", min_length=1)
+    ],
+    category_id: Annotated[
+        int, Field(description="Category ID where course will be created", gt=0)
+    ],
+    summary: Annotated[
+        str | None, Field(description="Course summary/description")
+    ] = None,
+    course_format: Annotated[
+        str, Field(description="Course format (topics, weeks, social)")
+    ] = "topics",
+    visible: Annotated[
+        bool, Field(description="Whether course is visible to students")
+    ] = True,
+    ctx: Context = None,
+) -> CourseCreated:
     """
     Create a new course in Moodle.
 
     WARNING: Requires ADMIN permissions in Moodle.
-    This is a write operation that creates new data.
-
-    Args:
-        fullname: Full course name
-        shortname: Short course code
-        category_id: Category to place course in
-        summary: Optional course description
-        course_format: Course format (topics, weeks, etc.)
-        visible: Whether course is visible
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        Confirmation with new course ID
 
     Example use cases:
         - "Create a new course called 'Introduction to Python'"
@@ -456,77 +628,71 @@ async def moodle_create_course(
     """
     moodle = get_moodle_client(ctx)
 
-    try:
-        course_data = {
-            'courses[0][fullname]': fullname,
-            'courses[0][shortname]': shortname,
-            'courses[0][categoryid]': category_id,
-            'courses[0][format]': course_format,
-            'courses[0][visible]': 1 if visible else 0
-        }
+    course: dict = {
+        "fullname": fullname,
+        "shortname": shortname,
+        "categoryid": category_id,
+        "format": course_format,
+        "visible": visible,
+    }
+    if summary:
+        course["summary"] = summary
 
-        if summary:
-            course_data['courses[0][summary]'] = summary
-
-        result = await moodle._make_request(
-            'core_course_create_courses',
-            course_data
+    result = await moodle.call(
+        "core_course_create_courses", {"courses": [course]}
+    )
+    if not result:
+        raise MoodleNotFoundError(
+            "Failed to create course - no result returned"
         )
 
-        if result and len(result) > 0:
-            new_course = result[0]
-            response_data = {
-                'course_id': new_course.get('id'),
-                'fullname': fullname,
-                'shortname': shortname,
-                'category_id': category_id,
-                'visible': visible
-            }
-            return format_response(response_data, "Course Created Successfully", format)
-        else:
-            raise Exception("Failed to create course - no result returned")
+    return CourseCreated(
+        course_id=result[0].get("id"),
+        fullname=fullname,
+        shortname=shortname,
+        category_id=category_id,
+        visible=visible,
+    )
 
-    except Exception as e:
-        raise Exception(f"Failed to create course: {str(e)}")
 
 @mcp.tool(
     name="moodle_update_course",
-    description="Update an existing course (requires admin/teacher permissions). REQUIRED: course_id (integer). Optional: fullname, shortname, summary, visible. ADMIN FUNCTION - requires appropriate permissions. Can only update whitelisted courses in dev mode.",
-    annotations={
-        "readOnlyHint": False,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": False
-    }
+    description=(
+        "Update an existing course (requires admin/teacher permissions). "
+        "REQUIRED: course_id. Optional: fullname, shortname, summary, visible. "
+        "Can only update whitelisted courses in dev mode."
+    ),
+    tags={"write", "course"},
+    annotations=ToolAnnotations(
+        readOnlyHint=False, destructiveHint=False,
+        idempotentHint=True, openWorldHint=False,
+    ),
 )
 @handle_moodle_errors
 @require_write_permission('course_id')
 async def moodle_update_course(
-    course_id: int = Field(description="Course ID to update", gt=0),
-    fullname: str | None = Field(None, description="New full name"),
-    shortname: str | None = Field(None, description="New short name"),
-    summary: str | None = Field(None, description="New summary/description"),
-    visible: bool | None = Field(None, description="New visibility status"),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    course_id: Annotated[
+        int, Field(description="Course ID to update", gt=0)
+    ],
+    fullname: Annotated[
+        str | None, Field(description="New full name")
+    ] = None,
+    shortname: Annotated[
+        str | None, Field(description="New short name")
+    ] = None,
+    summary: Annotated[
+        str | None, Field(description="New summary/description")
+    ] = None,
+    visible: Annotated[
+        bool | None, Field(description="New visibility status")
+    ] = None,
+    ctx: Context = None,
+) -> CourseUpdated:
     """
     Update an existing course's properties.
 
     SAFETY: Only allowed on whitelisted courses in development mode.
     WARNING: Requires ADMIN or TEACHER permissions in Moodle.
-
-    Args:
-        course_id: Course ID to update (must be whitelisted!)
-        fullname: New full course name
-        shortname: New short course code
-        summary: New course description
-        visible: New visibility status
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        Confirmation of update
 
     Raises:
         WriteOperationError: If course_id is not whitelisted
@@ -538,72 +704,51 @@ async def moodle_update_course(
     """
     moodle = get_moodle_client(ctx)
 
-    try:
-        course_data = {
-            'courses[0][id]': course_id
-        }
+    course: dict = {"id": course_id}
+    if fullname is not None:
+        course["fullname"] = fullname
+    if shortname is not None:
+        course["shortname"] = shortname
+    if summary is not None:
+        course["summary"] = summary
+    if visible is not None:
+        course["visible"] = visible
 
-        if fullname is not None:
-            course_data['courses[0][fullname]'] = fullname
-        if shortname is not None:
-            course_data['courses[0][shortname]'] = shortname
-        if summary is not None:
-            course_data['courses[0][summary]'] = summary
-        if visible is not None:
-            course_data['courses[0][visible]'] = 1 if visible else 0
-
-        # Check if we have any updates
-        if len(course_data) == 1:
-            return "No updates specified. Please provide at least one field to update."
-
-        await moodle._make_request(
-            'core_course_update_courses',
-            course_data
+    if len(course) == 1:
+        raise ValueError(
+            "No updates specified. Please provide at least one field to update."
         )
 
-        response_data = {
-            'course_id': course_id,
-            'updated': True
-        }
+    await moodle.call("core_course_update_courses", {"courses": [course]})
+    return CourseUpdated(course_id=course_id, updated=True)
 
-        return format_response(response_data, f"Course {course_id} Updated", format)
-
-    except Exception as e:
-        raise Exception(f"Failed to update course: {str(e)}")
 
 @mcp.tool(
     name="moodle_delete_course",
-    description="Delete a course permanently (requires admin permissions). REQUIRED: course_id (integer). DESTRUCTIVE OPERATION - Cannot be undone! ADMIN ONLY - requires admin permissions. Only works on whitelisted courses in dev mode.",
-    annotations={
-        "readOnlyHint": False,
-        "destructiveHint": True,  # DESTRUCTIVE!
-        "idempotentHint": True,
-        "openWorldHint": False
-    }
+    description=(
+        "Delete a course permanently (requires admin permissions). REQUIRED: "
+        "course_id. DESTRUCTIVE OPERATION - Cannot be undone! ADMIN ONLY. "
+        "Only works on whitelisted courses in dev mode."
+    ),
+    tags={"write", "course", "destructive"},
+    annotations=ToolAnnotations(
+        readOnlyHint=False, destructiveHint=True,
+        idempotentHint=True, openWorldHint=False,
+    ),
 )
 @handle_moodle_errors
 @require_write_permission('course_id')
 async def moodle_delete_course(
-    course_id: int = Field(description="Course ID to delete (must be whitelisted!)", gt=0),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    course_id: Annotated[
+        int, Field(description="Course ID to delete (must be whitelisted!)", gt=0)
+    ],
+    ctx: Context = None,
+) -> CourseDeleted:
     """
     PERMANENTLY delete a course from Moodle.
 
     DANGER: This is a DESTRUCTIVE operation that CANNOT BE UNDONE!
-    All course content, enrollments, grades, and activities will be deleted.
-
     SAFETY: Only allowed on whitelisted courses in development mode.
-    WARNING: Requires ADMIN permissions in Moodle.
-
-    Args:
-        course_id: Course ID to delete (must be whitelisted!)
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        Confirmation of deletion
 
     Raises:
         WriteOperationError: If course_id is not whitelisted
@@ -613,62 +758,49 @@ async def moodle_delete_course(
         - "Remove course 7299 permanently"
     """
     moodle = get_moodle_client(ctx)
+    await moodle.call("core_course_delete_courses", {"courseids": [course_id]})
+    return CourseDeleted(course_id=course_id, deleted=True)
 
-    try:
-        await moodle._make_request(
-            'core_course_delete_courses',
-            {'courseids[0]': course_id}
-        )
-
-        response_data = {
-            'course_id': course_id,
-            'deleted': True,
-            'warning': 'Course has been permanently deleted'
-        }
-
-        return format_response(response_data, f"Course {course_id} Deleted", format)
-
-    except Exception as e:
-        raise Exception(f"Failed to delete course: {str(e)}")
 
 @mcp.tool(
     name="moodle_duplicate_course",
-    description="Duplicate an existing course (requires admin/teacher permissions). REQUIRED: course_id (integer), fullname (string), shortname (string), category_id (integer). Optional: visible. ADMIN FUNCTION - requires appropriate permissions. Source course must be whitelisted in dev mode.",
-    annotations={
-        "readOnlyHint": False,
-        "destructiveHint": False,
-        "idempotentHint": False,
-        "openWorldHint": False
-    }
+    description=(
+        "Duplicate an existing course (requires admin/teacher permissions). "
+        "REQUIRED: course_id, fullname, shortname, category_id. Optional: "
+        "visible. Source course must be whitelisted in dev mode."
+    ),
+    tags={"write", "course"},
+    annotations=ToolAnnotations(
+        readOnlyHint=False, destructiveHint=False,
+        idempotentHint=False, openWorldHint=False,
+    ),
 )
 @handle_moodle_errors
 @require_write_permission('course_id')
 async def moodle_duplicate_course(
-    course_id: int = Field(description="Source course ID to duplicate (must be whitelisted!)", gt=0),
-    fullname: str = Field(description="Full name for new course", min_length=1),
-    shortname: str = Field(description="Short name for new course", min_length=1),
-    category_id: int = Field(description="Category ID for new course", gt=0),
-    visible: bool = Field(default=True, description="Whether new course is visible"),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    course_id: Annotated[
+        int,
+        Field(description="Source course ID to duplicate (must be whitelisted!)", gt=0),
+    ],
+    fullname: Annotated[
+        str, Field(description="Full name for new course", min_length=1)
+    ],
+    shortname: Annotated[
+        str, Field(description="Short name for new course", min_length=1)
+    ],
+    category_id: Annotated[
+        int, Field(description="Category ID for new course", gt=0)
+    ],
+    visible: Annotated[
+        bool, Field(description="Whether new course is visible")
+    ] = True,
+    ctx: Context = None,
+) -> CourseDuplicated:
     """
     Duplicate an existing course with all its activities and settings.
 
     SAFETY: Source course must be whitelisted in development mode.
     WARNING: Requires ADMIN or TEACHER permissions in Moodle.
-
-    Args:
-        course_id: Source course to duplicate (must be whitelisted!)
-        fullname: Full name for new course
-        shortname: Short name for new course
-        category_id: Category to place new course in
-        visible: Whether new course is visible
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        Confirmation with new course ID
 
     Raises:
         WriteOperationError: If source course_id is not whitelisted
@@ -679,67 +811,57 @@ async def moodle_duplicate_course(
     """
     moodle = get_moodle_client(ctx)
 
-    try:
-        params = {
-            'courseid': course_id,
-            'fullname': fullname,
-            'shortname': shortname,
-            'categoryid': category_id,
-            'visible': 1 if visible else 0
-        }
+    result = await moodle.call(
+        "core_course_duplicate_course",
+        {
+            "courseid": course_id,
+            "fullname": fullname,
+            "shortname": shortname,
+            "categoryid": category_id,
+            "visible": visible,
+        },
+    )
 
-        result = await moodle._make_request(
-            'core_course_duplicate_course',
-            params
-        )
+    return CourseDuplicated(
+        source_course_id=course_id,
+        new_course_id=result.get("id") if result else None,
+        fullname=fullname,
+        shortname=shortname,
+    )
 
-        response_data = {
-            'source_course_id': course_id,
-            'new_course_id': result.get('id') if result else None,
-            'fullname': fullname,
-            'shortname': shortname
-        }
-
-        return format_response(response_data, "Course Duplicated Successfully", format)
-
-    except Exception as e:
-        raise Exception(f"Failed to duplicate course: {str(e)}")
 
 @mcp.tool(
     name="moodle_import_course_content",
-    description="Import content from one course to another (requires admin/teacher permissions). REQUIRED: source_course_id (integer), dest_course_id (integer). Both courses must be whitelisted in dev mode. ADMIN FUNCTION - requires appropriate permissions.",
-    annotations={
-        "readOnlyHint": False,
-        "destructiveHint": False,
-        "idempotentHint": False,
-        "openWorldHint": False
-    }
+    description=(
+        "Import content from one course to another (requires admin/teacher "
+        "permissions). REQUIRED: source_course_id, dest_course_id. Both courses "
+        "must be whitelisted in dev mode."
+    ),
+    tags={"write", "course"},
+    annotations=ToolAnnotations(
+        readOnlyHint=False, destructiveHint=False,
+        idempotentHint=False, openWorldHint=False,
+    ),
 )
 @handle_moodle_errors
 @require_write_permission('source_course_id')
 @require_write_permission('dest_course_id')
 async def moodle_import_course_content(
-    source_course_id: int = Field(description="Source course ID to import from (must be whitelisted!)", gt=0),
-    dest_course_id: int = Field(description="Destination course ID to import to (must be whitelisted!)", gt=0),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    source_course_id: Annotated[
+        int,
+        Field(description="Source course ID to import from (must be whitelisted!)", gt=0),
+    ],
+    dest_course_id: Annotated[
+        int,
+        Field(description="Destination course ID to import to (must be whitelisted!)", gt=0),
+    ],
+    ctx: Context = None,
+) -> CourseImported:
     """
     Import activities and content from one course to another.
 
     SAFETY: Both courses must be whitelisted in development mode.
     WARNING: Requires ADMIN or TEACHER permissions in Moodle.
-
-    This copies course content but not enrollments or grades.
-
-    Args:
-        source_course_id: Source course to copy from (must be whitelisted!)
-        dest_course_id: Destination course to copy to (must be whitelisted!)
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        Confirmation of import
 
     Raises:
         WriteOperationError: If either course is not whitelisted
@@ -750,64 +872,55 @@ async def moodle_import_course_content(
     """
     moodle = get_moodle_client(ctx)
 
-    try:
-        params = {
-            'importfrom': source_course_id,
-            'importto': dest_course_id,
-            'deletecontent': 0  # Don't delete existing content
-        }
+    await moodle.call(
+        "core_course_import_course",
+        {
+            "importfrom": source_course_id,
+            "importto": dest_course_id,
+            "deletecontent": 0,  # Don't delete existing content
+        },
+    )
 
-        await moodle._make_request(
-            'core_course_import_course',
-            params
-        )
+    return CourseImported(
+        source_course_id=source_course_id,
+        dest_course_id=dest_course_id,
+        imported=True,
+    )
 
-        response_data = {
-            'source_course_id': source_course_id,
-            'dest_course_id': dest_course_id,
-            'imported': True
-        }
-
-        return format_response(response_data, "Course Content Imported", format)
-
-    except Exception as e:
-        raise Exception(f"Failed to import course content: {str(e)}")
 
 @mcp.tool(
     name="moodle_create_course_category",
-    description="Create a new course category (requires admin permissions). REQUIRED: name (string). Optional: parent_id, description, visible. ADMIN ONLY - requires admin permissions in Moodle. Returns the new category ID.",
-    annotations={
-        "readOnlyHint": False,
-        "destructiveHint": False,
-        "idempotentHint": False,
-        "openWorldHint": False
-    }
+    description=(
+        "Create a new course category (requires admin permissions). REQUIRED: "
+        "name. Optional: parent_id, description, visible. ADMIN ONLY. Returns "
+        "the new category id."
+    ),
+    tags={"write", "course"},
+    annotations=ToolAnnotations(
+        readOnlyHint=False, destructiveHint=False,
+        idempotentHint=False, openWorldHint=False,
+    ),
 )
 @handle_moodle_errors
 async def moodle_create_course_category(
-    name: str = Field(description="Category name", min_length=1),
-    parent_id: int = Field(default=0, description="Parent category ID (0 for top level)", ge=0),
-    description: str | None = Field(None, description="Category description"),
-    visible: bool = Field(default=True, description="Whether category is visible"),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    name: Annotated[
+        str, Field(description="Category name", min_length=1)
+    ],
+    parent_id: Annotated[
+        int, Field(description="Parent category ID (0 for top level)", ge=0)
+    ] = 0,
+    description: Annotated[
+        str | None, Field(description="Category description")
+    ] = None,
+    visible: Annotated[
+        bool, Field(description="Whether category is visible")
+    ] = True,
+    ctx: Context = None,
+) -> CategoryCreated:
     """
     Create a new course category in Moodle.
 
     WARNING: Requires ADMIN permissions in Moodle.
-    This is a write operation that creates new data.
-
-    Args:
-        name: Category name
-        parent_id: Parent category ID (0 for root level)
-        description: Optional category description
-        visible: Whether category is visible
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        Confirmation with new category ID
 
     Example use cases:
         - "Create a category called 'Computer Science'"
@@ -815,53 +928,55 @@ async def moodle_create_course_category(
     """
     moodle = get_moodle_client(ctx)
 
-    try:
-        category_data = {
-            'categories[0][name]': name,
-            'categories[0][parent]': parent_id,
-            'categories[0][visible]': 1 if visible else 0
-        }
+    category: dict = {
+        "name": name,
+        "parent": parent_id,
+        "visible": visible,
+    }
+    if description:
+        category["description"] = description
 
-        if description:
-            category_data['categories[0][description]'] = description
-
-        result = await moodle._make_request(
-            'core_course_create_categories',
-            category_data
+    result = await moodle.call(
+        "core_course_create_categories", {"categories": [category]}
+    )
+    if not result:
+        raise MoodleNotFoundError(
+            "Failed to create category - no result returned"
         )
 
-        if result and len(result) > 0:
-            new_category = result[0]
-            response_data = {
-                'category_id': new_category.get('id'),
-                'name': name,
-                'parent_id': parent_id,
-                'visible': visible
-            }
-            return format_response(response_data, "Category Created Successfully", format)
-        else:
-            raise Exception("Failed to create category - no result returned")
+    return CategoryCreated(
+        category_id=result[0].get("id"),
+        name=name,
+        parent_id=parent_id,
+        visible=visible,
+    )
 
-    except Exception as e:
-        raise Exception(f"Failed to create category: {str(e)}")
 
 @mcp.tool(
     name="moodle_delete_course_category",
-    description="Delete a course category permanently (requires admin permissions). REQUIRED: category_id (integer). Optional: recursive (boolean, default=False). DESTRUCTIVE OPERATION - Cannot be undone! ADMIN ONLY. If recursive=True, deletes all courses in category!",
-    annotations={
-        "readOnlyHint": False,
-        "destructiveHint": True,  # DESTRUCTIVE!
-        "idempotentHint": True,
-        "openWorldHint": False
-    }
+    description=(
+        "Delete a course category permanently (requires admin permissions). "
+        "REQUIRED: category_id. Optional: recursive (default False). "
+        "DESTRUCTIVE OPERATION - Cannot be undone! ADMIN ONLY. If "
+        "recursive=True, deletes all courses in category!"
+    ),
+    tags={"write", "course", "destructive"},
+    annotations=ToolAnnotations(
+        readOnlyHint=False, destructiveHint=True,
+        idempotentHint=True, openWorldHint=False,
+    ),
 )
 @handle_moodle_errors
 async def moodle_delete_course_category(
-    category_id: int = Field(description="Category ID to delete", gt=0),
-    recursive: bool = Field(default=False, description="Also delete all courses in category (DANGEROUS!)"),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    category_id: Annotated[
+        int, Field(description="Category ID to delete", gt=0)
+    ],
+    recursive: Annotated[
+        bool,
+        Field(description="Also delete all courses in category (DANGEROUS!)"),
+    ] = False,
+    ctx: Context = None,
+) -> CategoryDeleted:
     """
     PERMANENTLY delete a course category from Moodle.
 
@@ -870,41 +985,23 @@ async def moodle_delete_course_category(
 
     WARNING: Requires ADMIN permissions in Moodle.
 
-    Args:
-        category_id: Category ID to delete
-        recursive: If True, delete all courses in category (DANGEROUS!)
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        Confirmation of deletion
-
     Example use cases:
         - "Delete empty category 15"
         - "Remove category 20 and all its courses" (recursive)
     """
     moodle = get_moodle_client(ctx)
 
-    try:
-        params = {
-            'categories[0][id]': category_id,
-            'categories[0][recursive]': 1 if recursive else 0
-        }
+    await moodle.call(
+        "core_course_delete_categories",
+        {"categories": [{"id": category_id, "recursive": recursive}]},
+    )
 
-        await moodle._make_request(
-            'core_course_delete_categories',
-            params
-        )
-
-        response_data = {
-            'category_id': category_id,
-            'deleted': True,
-            'recursive': recursive,
-            'warning': 'Category has been permanently deleted' +
-                      (' along with all its courses' if recursive else '')
-        }
-
-        return format_response(response_data, f"Category {category_id} Deleted", format)
-
-    except Exception as e:
-        raise Exception(f"Failed to delete category: {str(e)}")
+    warning = "Category has been permanently deleted" + (
+        " along with all its courses" if recursive else ""
+    )
+    return CategoryDeleted(
+        category_id=category_id,
+        deleted=True,
+        recursive=recursive,
+        warning=warning,
+    )
