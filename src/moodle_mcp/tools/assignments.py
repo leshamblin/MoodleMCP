@@ -14,6 +14,7 @@ from ..utils.error_handling import handle_moodle_errors, require_write_permissio
 from ..utils.api_helpers import get_moodle_client, get_resolver
 from ..utils.assignment_helpers import (
     find_assignment_by_id,
+    find_assignment_in_course,
     get_assignments_for_user,
     get_assignments_for_course,
 )
@@ -129,10 +130,11 @@ async def moodle_list_assignments(
 @mcp.tool(
     name="moodle_get_assignment_details",
     description=(
-        "Get detailed information about an assignment including description, "
-        "due date, and submission settings. REQUIRED: assignment_id (integer). "
-        "Example: assignment_id=123. Use moodle_list_assignments to get "
-        "assignment_id."
+        "Get details (description, due date, submission settings) for one "
+        "assignment. Best: pass course plus the assignment name or instance id "
+        "-- a single lookup. If you pass only an assignment instance id without "
+        "course, it falls back to scanning your enrolled courses. "
+        "Example: course='Biology 101', assignment='Lab Report 1'."
     ),
     tags={"read"},
     annotations=ToolAnnotations(
@@ -142,20 +144,35 @@ async def moodle_list_assignments(
 )
 @handle_moodle_errors
 async def moodle_get_assignment_details(
-    assignment_id: Annotated[int, Field(description="Assignment ID", gt=0)],
+    assignment: Annotated[
+        int | str, Field(description="Assignment name (with course) or instance id")
+    ],
+    course: Annotated[
+        int | str | None,
+        Field(description="Course id, shortname, or name (recommended)"),
+    ] = None,
     ctx: Context = None,
 ) -> Assignment:
-    """Get an assignment's details."""
+    """Get an assignment's details (single lookup when course is given)."""
     moodle = get_moodle_client(ctx)
+    resolver = get_resolver(ctx)
+    from ..core.exceptions import MoodleNotFoundError
 
-    assignment = await find_assignment_by_id(moodle, assignment_id)
-    if not assignment:
-        from ..core.exceptions import MoodleNotFoundError
+    if course is not None:
+        act = await resolver.activity(course, assignment, modname="assign")
+        cid = await resolver.course_id(course)
+        found = await find_assignment_in_course(moodle, cid, act.instance)
+    elif isinstance(assignment, int):
+        found = await find_assignment_by_id(moodle, assignment)
+    else:
         raise MoodleNotFoundError(
-            f"Assignment {assignment_id} not found in your enrolled courses."
+            "Pass 'course' when identifying an assignment by name."
         )
 
-    return _assignment(assignment)
+    if not found:
+        raise MoodleNotFoundError(f"Assignment {assignment!r} not found.")
+
+    return _assignment(found)
 
 
 @mcp.tool(
@@ -237,10 +254,11 @@ async def moodle_get_user_assignments(
 @mcp.tool(
     name="moodle_get_submission_status",
     description=(
-        "Get submission status for an assignment. REQUIRED: assignment_id "
-        "(integer). Optional: user (id, username, or email; omit for current "
-        "user). Example: assignment_id=123. Returns submission status, due "
-        "dates, and whether the user can submit."
+        "Get submission status for an assignment. Pass course plus the "
+        "assignment name (recommended), or an assignment instance id directly. "
+        "Optional: user (id, username, or email; omit for current user). "
+        "Returns submission status, due dates, and whether the user can submit. "
+        "Example: course='Biology 101', assignment='Lab Report 1'."
     ),
     tags={"read"},
     annotations=ToolAnnotations(
@@ -250,7 +268,13 @@ async def moodle_get_user_assignments(
 )
 @handle_moodle_errors
 async def moodle_get_submission_status(
-    assignment_id: Annotated[int, Field(description="Assignment ID", gt=0)],
+    assignment: Annotated[
+        int | str, Field(description="Assignment name (with course) or instance id")
+    ],
+    course: Annotated[
+        int | str | None,
+        Field(description="Course id, shortname, or name (required if assignment is a name)"),
+    ] = None,
     user: Annotated[
         int | str | None,
         Field(description="User id, username, or email; omit for current user"),
@@ -262,13 +286,23 @@ async def moodle_get_submission_status(
     resolver = get_resolver(ctx)
     uid = await resolver.user_id(user)
 
+    if course is not None:
+        aid = (await resolver.activity(course, assignment, modname="assign")).instance
+    elif isinstance(assignment, int):
+        aid = assignment
+    else:
+        from ..core.exceptions import MoodleNotFoundError
+        raise MoodleNotFoundError(
+            "Pass 'course' when identifying an assignment by name."
+        )
+
     status_data = await moodle.call(
         "mod_assign_get_submission_status",
-        {"assignid": assignment_id, "userid": uid},
+        {"assignid": aid, "userid": uid},
     )
 
     return SubmissionStatus(
-        assignment_id=assignment_id, user_id=uid, status=status_data or {}
+        assignment_id=aid, user_id=uid, status=status_data or {}
     )
 
 
@@ -279,11 +313,12 @@ async def moodle_get_submission_status(
 @mcp.tool(
     name="moodle_save_assignment_submission",
     description=(
-        "Save assignment submission text (draft). REQUIRED: course_id "
-        "(integer), assignment_id (integer), submission_text (string). WRITE "
-        "OPERATION - only works on whitelisted courses (default: course 7299). "
-        "Example: course_id=7299, assignment_id=123, submission_text='My "
-        "answer'. This saves a draft; use moodle_submit_assignment to finalize."
+        "WRITE: save online-text content as a draft submission for an "
+        "assignment (does not finalize -- use moodle_submit_assignment for "
+        "that). Only works on write-whitelisted courses (course 7299 in DEV). "
+        "'assignment' accepts the activity name or its instance id. "
+        "Example: course=7299, assignment='Lab Report 1', "
+        "submission_text='My answer'."
     ),
     tags={"write", "assignment"},
     annotations=ToolAnnotations(
@@ -292,12 +327,15 @@ async def moodle_get_submission_status(
     ),
 )
 @handle_moodle_errors
-@require_write_permission('course_id')
+@require_write_permission('course')
 async def moodle_save_assignment_submission(
-    course_id: Annotated[
-        int, Field(description="Course ID (must be whitelisted)", gt=0)
+    course: Annotated[
+        int | str,
+        Field(description="Course id, shortname, or name (must be whitelisted)"),
     ],
-    assignment_id: Annotated[int, Field(description="Assignment ID", gt=0)],
+    assignment: Annotated[
+        int | str, Field(description="Assignment name or instance id")
+    ],
     submission_text: Annotated[
         str, Field(description="Assignment submission text content", min_length=1)
     ],
@@ -305,11 +343,15 @@ async def moodle_save_assignment_submission(
 ) -> SavedSubmission:
     """Save assignment submission text as a draft (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
+    resolver = get_resolver(ctx)
+
+    cid = await resolver.course_id(course)
+    act = await resolver.activity(course, assignment, modname="assign")
 
     await moodle.call(
         "mod_assign_save_submission",
         {
-            "assignmentid": assignment_id,
+            "assignmentid": act.instance,
             "plugindata": {
                 "onlinetext_editor": {
                     "text": submission_text,
@@ -321,8 +363,8 @@ async def moodle_save_assignment_submission(
     )
 
     return SavedSubmission(
-        assignment_id=assignment_id,
-        course_id=course_id,
+        assignment_id=act.instance,
+        course_id=cid,
         saved=True,
         status="draft",
     )
@@ -331,11 +373,12 @@ async def moodle_save_assignment_submission(
 @mcp.tool(
     name="moodle_submit_assignment",
     description=(
-        "Submit assignment for grading (final submit). REQUIRED: course_id "
-        "(integer), assignment_id (integer). WRITE OPERATION - DESTRUCTIVE - "
-        "only works on whitelisted courses (default: course 7299). Example: "
-        "course_id=7299, assignment_id=123. This finalizes the submission and "
-        "cannot be undone (unless a teacher reopens)."
+        "WRITE (destructive): finalize (submit for grading) an assignment's "
+        "draft. Only works on write-whitelisted courses (course 7299 in DEV). "
+        "'assignment' accepts the activity name or its instance id. Save draft "
+        "content first with moodle_save_assignment_submission. Cannot be undone "
+        "unless a teacher reopens. Example: course=7299, "
+        "assignment='Lab Report 1'."
     ),
     tags={"write", "assignment"},
     annotations=ToolAnnotations(
@@ -344,23 +387,28 @@ async def moodle_save_assignment_submission(
     ),
 )
 @handle_moodle_errors
-@require_write_permission('course_id')
+@require_write_permission('course')
 async def moodle_submit_assignment(
-    course_id: Annotated[
-        int, Field(description="Course ID (must be whitelisted)", gt=0)
+    course: Annotated[
+        int | str,
+        Field(description="Course id, shortname, or name (must be whitelisted)"),
     ],
-    assignment_id: Annotated[
-        int, Field(description="Assignment ID to submit", gt=0)
+    assignment: Annotated[
+        int | str, Field(description="Assignment name or instance id")
     ],
     ctx: Context = None,
 ) -> SubmittedAssignment:
     """Submit an assignment for final grading (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
+    resolver = get_resolver(ctx)
+
+    cid = await resolver.course_id(course)
+    act = await resolver.activity(course, assignment, modname="assign")
 
     await moodle.call(
-        "mod_assign_submit_for_grading", {"assignmentid": assignment_id}
+        "mod_assign_submit_for_grading", {"assignmentid": act.instance}
     )
 
     return SubmittedAssignment(
-        assignment_id=assignment_id, course_id=course_id, status="submitted"
+        assignment_id=act.instance, course_id=cid, status="submitted"
     )

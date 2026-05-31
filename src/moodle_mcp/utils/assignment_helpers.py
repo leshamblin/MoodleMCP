@@ -151,3 +151,24 @@ async def get_assignments_for_course(
         return courses[0]['assignments']
 
     return []
+
+
+async def find_assignment_in_course(
+    moodle: MoodleAPIClient,
+    course_id: int,
+    assignment_instance_id: int
+) -> dict[str, Any] | None:
+    """
+    Find one assignment within a single known course (single API call).
+
+    Prefer this over ``find_assignment_by_id`` whenever the course is known:
+    it is one ``mod_assign_get_assignments`` call instead of a scan of every
+    enrolled course.
+
+    Returns the assignment dict (with course_id added) or None if not present.
+    """
+    for assign in await get_assignments_for_course(moodle, course_id):
+        if assign.get('id') == assignment_instance_id:
+            assign['course_id'] = course_id
+            return assign
+    return None
