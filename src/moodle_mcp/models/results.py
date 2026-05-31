@@ -11,6 +11,37 @@ incoming Moodle JSON is still parsed with the Pydantic models in this package.
 from dataclasses import dataclass, field
 
 
+# ------------------------------------------------------------------------ site
+@dataclass
+class SiteInfo:
+    sitename: str
+    siteurl: str
+    userid: int
+    release: str | None = None
+    version: str | None = None
+    username: str | None = None
+    fullname: str | None = None
+    useremail: str | None = None
+    function_count: int = 0
+
+
+@dataclass
+class ConnectionStatus:
+    connected: bool
+    sitename: str
+    siteurl: str
+    userid: int
+    release: str | None = None
+    fullname: str | None = None
+    username: str | None = None
+
+
+@dataclass
+class AvailableFunctions:
+    functions: list[str]
+    count: int
+
+
 # --------------------------------------------------------------------- courses
 @dataclass
 class CourseSummary:

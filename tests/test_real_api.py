@@ -124,42 +124,30 @@ def ctx(moodle_client):
 class TestSiteTools:
     """Test site information tools with real API."""
 
-    async def test_get_site_info_markdown(self, ctx):
-        """Test getting site info in markdown format."""
-        result = await moodle_get_site_info(format="markdown", ctx=ctx)
+    async def test_get_site_info(self, ctx):
+        """Site info returns a structured SiteInfo with the user's id."""
+        result = await moodle_get_site_info(ctx=ctx)
 
-        assert isinstance(result, str)
-        assert len(result) > 0
-        assert "Moodle Projects" in result or "Site" in result
-        print(f"\n📍 Site Info:\n{result[:200]}...")
-
-    async def test_get_site_info_json(self, ctx):
-        """Test getting site info in JSON format."""
-        result = await moodle_get_site_info(format="json", ctx=ctx)
-
-        assert isinstance(result, str)
-        assert "{" in result  # JSON format
-        print(f"\n📍 Site Info (JSON):\n{result[:200]}...")
+        assert result.userid > 0
+        assert result.sitename
+        assert result.function_count > 0
+        print(f"\n📍 Site Info: {result.sitename} (user {result.userid})")
 
     async def test_connection(self, ctx):
-        """Test connection validation."""
+        """Connection test returns a structured ConnectionStatus."""
         result = await moodle_test_connection(ctx=ctx)
 
-        assert isinstance(result, str)
-        assert "✓" in result or "success" in result.lower()
-        print(f"\n✅ Connection Test:\n{result}")
+        assert result.connected is True
+        assert result.sitename
+        print(f"\n✅ Connection: {result.sitename} as {result.fullname}")
 
     async def test_available_functions(self, ctx):
-        """Test listing available functions."""
-        # Use JSON so the full function list is present (markdown summarizes
-        # large lists into a count rather than enumerating them).
-        result = await moodle_get_available_functions(format="json", ctx=ctx)
+        """Available functions returns the full list of callable functions."""
+        result = await moodle_get_available_functions(ctx=ctx)
 
-        assert isinstance(result, str)
-        assert "function" in result.lower()
-        # Should expose many core_ functions in the full JSON payload.
-        assert result.count("core_") > 10
-        print(f"\n📋 Functions (first 200 chars):\n{result[:200]}...")
+        assert result.count > 10
+        assert any(name.startswith("core_") for name in result.functions)
+        print(f"\n📋 Functions: {result.count} available")
 
 
 @pytest.mark.asyncio
