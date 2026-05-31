@@ -112,7 +112,7 @@ moodle_mcp.server.mcp = mcp
 # @mcp.tool decorator, so the names are intentionally unused (noqa: F401).
 from moodle_mcp.tools import (  # noqa: F401
     site, courses, users, grades, assignments, messages, calendar,
-    forums, groups, enrollment, quiz, completion, badges,
+    forums, groups, enrollment, quiz, completion, badges, dashboard,
 )
 
 # PROD write lockdown: when running against production with writes disabled,
