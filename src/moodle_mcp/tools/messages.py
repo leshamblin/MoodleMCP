@@ -10,8 +10,12 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from ..server import mcp
-from ..utils.error_handling import handle_moodle_errors
+from ..utils.error_handling import (
+    handle_moodle_errors,
+    require_global_write_permission,
+)
 from ..utils.api_helpers import get_moodle_client
+from ..core.client import raise_on_row_errors
 
 
 # --------------------------------------------------------------------------- #
@@ -234,7 +238,7 @@ async def moodle_get_unread_count(
     ),
 )
 @handle_moodle_errors
-# NOTE: course-independent write; gated by global write policy in a later phase
+@require_global_write_permission
 async def moodle_send_message(
     recipient_user_id: Annotated[
         int, Field(description="Recipient user ID", gt=0)
@@ -267,7 +271,6 @@ async def moodle_send_message(
 
     # core_message_send_instant_messages returns a list of per-message results
     # that may carry 'errormessage' without raising; surface those as errors.
-    from ..core.client import raise_on_row_errors
     raise_on_row_errors(result)
 
     message_id = result[0].get("msgid")
@@ -294,7 +297,7 @@ async def moodle_send_message(
     ),
 )
 @handle_moodle_errors
-# NOTE: course-independent write; gated by global write policy in a later phase
+@require_global_write_permission
 async def moodle_delete_conversation(
     conversation_id: Annotated[
         int, Field(description="Conversation ID to delete", gt=0)
