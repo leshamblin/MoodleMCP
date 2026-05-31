@@ -169,7 +169,7 @@ Only courses in this list will allow write operations. This keeps you safe while
 
 ## Available Tools
 
-The server provides 68 tools organized by category:
+The server provides 77 tools organized by category:
 
 | Category | Tools | Description |
 |----------|-------|-------------|
