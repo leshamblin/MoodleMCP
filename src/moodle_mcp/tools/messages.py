@@ -2,45 +2,95 @@
 Messaging and conversation tools - READ and WRITE operations.
 """
 
-from pydantic import Field
+from dataclasses import dataclass, field
+from typing import Annotated
+
 from fastmcp import Context
+from mcp.types import ToolAnnotations
+from pydantic import Field
 
 from ..server import mcp
-from ..utils.error_handling import handle_moodle_errors, require_write_permission
+from ..utils.error_handling import handle_moodle_errors
 from ..utils.api_helpers import get_moodle_client
-from ..utils.formatting import format_response
-from ..models.base import ResponseFormat
+
+
+# --------------------------------------------------------------------------- #
+# Local structured-output models (FastMCP 3.x).
+# Kept here (not in models/results.py) since they're specific to message tools.
+# --------------------------------------------------------------------------- #
+@dataclass
+class Conversation:
+    id: int
+    name: str | None = None
+    type: int | None = None
+    unreadcount: int | None = None
+
+
+@dataclass
+class ConversationList:
+    conversations: list[Conversation] = field(default_factory=list)
+    count: int = 0
+
+
+@dataclass
+class Message:
+    id: int
+    useridfrom: int | None = None
+    text: str | None = None
+    timecreated: int | None = None
+
+
+@dataclass
+class ConversationMessages:
+    conversation_id: int
+    messages: list[Message] = field(default_factory=list)
+    count: int = 0
+
+
+@dataclass
+class UnreadCount:
+    count: int
+
+
+@dataclass
+class SentMessage:
+    message_id: int
+    recipient_user_id: int
+    message_sent: bool
+
+
+@dataclass
+class DeletedConversation:
+    conversation_id: int
+    user_id: int
+    deleted: bool
+
 
 @mcp.tool(
     name="moodle_get_conversations",
-    description="Get message conversations for authenticated user. NO USER PARAMETERS REQUIRED - uses authenticated user automatically. Optional: limit (1-100, default=20), offset (default=0). Returns conversation IDs.",
-    annotations={
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True
-    }
+    description=(
+        "Get message conversations for the authenticated user. NO USER PARAMETERS "
+        "REQUIRED - uses the authenticated user automatically. Optional: limit "
+        "(1-100, default=20), offset (default=0). Returns conversation IDs."
+    ),
+    tags={"read"},
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False,
+        idempotentHint=True, openWorldHint=True,
+    ),
 )
 @handle_moodle_errors
 async def moodle_get_conversations(
-    limit: int = Field(default=20, description="Maximum conversations to return", ge=1, le=100),
-    offset: int = Field(default=0, description="Offset for pagination", ge=0),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    limit: Annotated[
+        int, Field(description="Maximum conversations to return", ge=1, le=100)
+    ] = 20,
+    offset: Annotated[
+        int, Field(description="Offset for pagination", ge=0)
+    ] = 0,
+    ctx: Context = None,
+) -> ConversationList:
     """
     Get list of message conversations for the current user.
-
-    Returns recent conversations with unread counts and latest messages.
-
-    Args:
-        limit: Maximum number of conversations
-        offset: Offset for pagination
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        List of conversations
 
     Example use cases:
         - "Show my messages"
@@ -49,56 +99,50 @@ async def moodle_get_conversations(
     """
     moodle = get_moodle_client(ctx)
 
-    # Get conversations
-    try:
-        conversations_data = await moodle._make_request(
-            'core_message_get_conversations',
-            {
-                'userid': 0,  # 0 = current user
-                'limitfrom': offset,
-                'limitnum': limit
-            }
+    conversations_data = await moodle.call(
+        "core_message_get_conversations",
+        {
+            "userid": 0,  # 0 = current user
+            "limitfrom": offset,
+            "limitnum": limit,
+        },
+    )
+
+    conversations = [
+        Conversation(
+            id=c.get("id", 0),
+            name=c.get("name"),
+            type=c.get("type"),
+            unreadcount=c.get("unreadcount"),
         )
+        for c in (conversations_data or {}).get("conversations", [])
+    ]
+    return ConversationList(conversations=conversations, count=len(conversations))
 
-        conversations = conversations_data.get('conversations', [])
-
-        if not conversations:
-            return "No conversations found."
-
-        return format_response(conversations, "Message Conversations", format)
-    except Exception as e:
-        return f"Unable to retrieve conversations. Error: {str(e)}"
 
 @mcp.tool(
     name="moodle_get_messages",
-    description="Get messages from a specific conversation. REQUIRED: conversation_id (integer). Optional: limit (1-100, default=20). Example: conversation_id=456. Use moodle_get_conversations to get conversation_id.",
-    annotations={
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True
-    }
+    description=(
+        "Get messages from a specific conversation. REQUIRED: conversation_id "
+        "(integer). Optional: limit (1-100, default=20). Example: "
+        "conversation_id=456. Use moodle_get_conversations to get conversation_id."
+    ),
+    tags={"read"},
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False,
+        idempotentHint=True, openWorldHint=True,
+    ),
 )
 @handle_moodle_errors
 async def moodle_get_messages(
-    conversation_id: int = Field(description="Conversation ID", gt=0),
-    limit: int = Field(default=20, description="Maximum messages to return", ge=1, le=100),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    conversation_id: Annotated[int, Field(description="Conversation ID", gt=0)],
+    limit: Annotated[
+        int, Field(description="Maximum messages to return", ge=1, le=100)
+    ] = 20,
+    ctx: Context = None,
+) -> ConversationMessages:
     """
     Get messages from a specific conversation.
-
-    Returns message history for a conversation.
-
-    Args:
-        conversation_id: Conversation ID
-        limit: Maximum number of messages
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        Messages from the conversation
 
     Example use cases:
         - "Show messages from conversation 123"
@@ -107,50 +151,51 @@ async def moodle_get_messages(
     """
     moodle = get_moodle_client(ctx)
 
-    try:
-        messages_data = await moodle._make_request(
-            'core_message_get_conversation_messages',
-            {
-                'currentuserid': 0,  # 0 = current user
-                'convid': conversation_id,
-                'limitfrom': 0,
-                'limitnum': limit
-            }
+    messages_data = await moodle.call(
+        "core_message_get_conversation_messages",
+        {
+            "currentuserid": 0,  # 0 = current user
+            "convid": conversation_id,
+            "limitfrom": 0,
+            "limitnum": limit,
+        },
+    )
+
+    messages = [
+        Message(
+            id=m.get("id", 0),
+            useridfrom=m.get("useridfrom"),
+            text=m.get("text"),
+            timecreated=m.get("timecreated"),
         )
+        for m in (messages_data or {}).get("messages", [])
+    ]
+    return ConversationMessages(
+        conversation_id=conversation_id,
+        messages=messages,
+        count=len(messages),
+    )
 
-        messages = messages_data.get('messages', [])
-
-        if not messages:
-            return f"No messages found in conversation {conversation_id}."
-
-        return format_response(messages, f"Messages from Conversation {conversation_id}", format)
-    except Exception as e:
-        return f"Unable to retrieve messages from conversation {conversation_id}. Error: {str(e)}"
 
 @mcp.tool(
     name="moodle_get_unread_count",
-    description="Get count of unread messages for authenticated user. NO PARAMETERS REQUIRED. Returns simple integer count. Use this to check if there are new messages.",
-    annotations={
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True
-    }
+    description=(
+        "Get the count of unread messages for the authenticated user. NO "
+        "PARAMETERS REQUIRED. Returns a simple integer count. Use this to check "
+        "if there are new messages."
+    ),
+    tags={"read"},
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False,
+        idempotentHint=True, openWorldHint=True,
+    ),
 )
 @handle_moodle_errors
 async def moodle_get_unread_count(
-    ctx: Context = None
-) -> str:
+    ctx: Context = None,
+) -> UnreadCount:
     """
     Get count of unread messages for the current user.
-
-    Returns the total number of unread messages across all conversations.
-
-    Args:
-        ctx: FastMCP context
-
-    Returns:
-        Unread message count
 
     Example use cases:
         - "How many unread messages do I have?"
@@ -159,17 +204,14 @@ async def moodle_get_unread_count(
     """
     moodle = get_moodle_client(ctx)
 
-    try:
-        unread_data = await moodle._make_request(
-            'core_message_get_unread_conversations_count',
-            {'userid': 0}  # 0 = current user
-        )
+    unread_data = await moodle.call(
+        "core_message_get_unread_conversations_count",
+        {"userid": 0},  # 0 = current user
+    )
 
-        count = unread_data if isinstance(unread_data, int) else unread_data.get('count', 0)
+    count = unread_data if isinstance(unread_data, int) else (unread_data or {}).get("count", 0)
+    return UnreadCount(count=count)
 
-        return f"You have **{count}** unread message(s)."
-    except Exception as e:
-        return f"Unable to retrieve unread message count. Error: {str(e)}"
 
 # ============================================================================
 # WRITE OPERATIONS - Messages are user-to-user, not course-specific
@@ -177,35 +219,33 @@ async def moodle_get_unread_count(
 
 @mcp.tool(
     name="moodle_send_message",
-    description="Send a private message to a user. REQUIRED: recipient_user_id (integer), message_text (string). WRITE OPERATION. Example: recipient_user_id=123, message_text='Hello!'.",
-    annotations={
-        "readOnlyHint": False,
-        "destructiveHint": False,
-        "idempotentHint": False,
-        "openWorldHint": False
-    }
+    description=(
+        "Send a private message to a user. REQUIRED: recipient_user_id (integer), "
+        "message_text (string). WRITE OPERATION. Example: recipient_user_id=123, "
+        "message_text='Hello!'."
+    ),
+    tags={"write", "message"},
+    annotations=ToolAnnotations(
+        readOnlyHint=False, destructiveHint=False,
+        idempotentHint=False, openWorldHint=False,
+    ),
 )
 @handle_moodle_errors
+# NOTE: course-independent write; gated by global write policy in a later phase
 async def moodle_send_message(
-    recipient_user_id: int = Field(description="Recipient user ID", gt=0),
-    message_text: str = Field(description="Message content", min_length=1),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    recipient_user_id: Annotated[
+        int, Field(description="Recipient user ID", gt=0)
+    ],
+    message_text: Annotated[
+        str, Field(description="Message content", min_length=1)
+    ],
+    ctx: Context = None,
+) -> SentMessage:
     """
     Send a private message to a specific user.
 
     Messages are user-to-user communications and are not restricted
     by course whitelist.
-
-    Args:
-        recipient_user_id: ID of the user to send message to
-        message_text: Message content to send
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        Confirmation message with message ID
 
     Example use cases:
         - "Send a message to user 123"
@@ -214,54 +254,50 @@ async def moodle_send_message(
     """
     moodle = get_moodle_client(ctx)
 
-    # Prepare message data
     params = {
-        'messages[0][touserid]': recipient_user_id,
-        'messages[0][text]': message_text,
-        'messages[0][textformat]': 1  # HTML format
+        "messages[0][touserid]": recipient_user_id,
+        "messages[0][text]": message_text,
+        "messages[0][textformat]": 1,  # HTML format
     }
 
-    try:
-        result = await moodle._make_request(
-            'core_message_send_instant_messages',
-            params
-        )
+    result = await moodle.call("core_message_send_instant_messages", params)
 
-        # Result is an array of message IDs
-        if isinstance(result, list) and len(result) > 0:
-            message_id = result[0].get('msgid')
-        else:
-            message_id = None
+    # core_message_send_instant_messages returns a list of per-message results
+    # that may carry 'errormessage' without raising; surface those as errors.
+    from ..core.client import raise_on_row_errors
+    raise_on_row_errors(result)
 
-        if not message_id:
-            return "Message sent but no ID returned. It may have been delivered successfully."
+    message_id = result[0].get("msgid")
 
-        response_data = {
-            'message_id': message_id,
-            'recipient_user_id': recipient_user_id,
-            'message_sent': True
-        }
+    return SentMessage(
+        message_id=message_id,
+        recipient_user_id=recipient_user_id,
+        message_sent=True,
+    )
 
-        return format_response(response_data, "Message Sent", format)
-    except Exception as e:
-        raise Exception(f"Failed to send message: {str(e)}")
 
 @mcp.tool(
     name="moodle_delete_conversation",
-    description="Delete a conversation for the current user. REQUIRED: conversation_id (integer). WRITE OPERATION - DESTRUCTIVE. Example: conversation_id=789. Use moodle_get_conversations to get conversation_id. Note: Only deletes for current user, not other participants.",
-    annotations={
-        "readOnlyHint": False,
-        "destructiveHint": True,
-        "idempotentHint": True,
-        "openWorldHint": False
-    }
+    description=(
+        "Delete a conversation for the current user. REQUIRED: conversation_id "
+        "(integer). WRITE OPERATION - DESTRUCTIVE. Example: conversation_id=789. "
+        "Use moodle_get_conversations to get conversation_id. Note: Only deletes "
+        "for the current user, not other participants."
+    ),
+    tags={"write", "message"},
+    annotations=ToolAnnotations(
+        readOnlyHint=False, destructiveHint=True,
+        idempotentHint=True, openWorldHint=False,
+    ),
 )
 @handle_moodle_errors
+# NOTE: course-independent write; gated by global write policy in a later phase
 async def moodle_delete_conversation(
-    conversation_id: int = Field(description="Conversation ID to delete", gt=0),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format"),
-    ctx: Context = None
-) -> str:
+    conversation_id: Annotated[
+        int, Field(description="Conversation ID to delete", gt=0)
+    ],
+    ctx: Context = None,
+) -> DeletedConversation:
     """
     Delete a conversation for the current user.
 
@@ -271,14 +307,6 @@ async def moodle_delete_conversation(
     Messages are user-to-user communications and are not restricted
     by course whitelist.
 
-    Args:
-        conversation_id: ID of the conversation to delete
-        format: Output format (markdown or json)
-        ctx: FastMCP context
-
-    Returns:
-        Confirmation message
-
     Example use cases:
         - "Delete conversation 789"
         - "Remove conversation with user X"
@@ -286,28 +314,18 @@ async def moodle_delete_conversation(
     """
     moodle = get_moodle_client(ctx)
 
-    # Get current user ID
     site_info = await moodle.get_site_info()
-    user_id = site_info['userid']
+    user_id = site_info["userid"]
 
-    # Prepare delete data
     params = {
-        'userid': user_id,
-        'conversationids[0]': conversation_id
+        "userid": user_id,
+        "conversationids[0]": conversation_id,
     }
 
-    try:
-        result = await moodle._make_request(
-            'core_message_delete_conversations_by_id',
-            params
-        )
+    await moodle.call("core_message_delete_conversations_by_id", params)
 
-        response_data = {
-            'conversation_id': conversation_id,
-            'user_id': user_id,
-            'deleted': True
-        }
-
-        return format_response(response_data, "Conversation Deleted", format)
-    except Exception as e:
-        raise Exception(f"Failed to delete conversation: {str(e)}")
+    return DeletedConversation(
+        conversation_id=conversation_id,
+        user_id=user_id,
+        deleted=True,
+    )
