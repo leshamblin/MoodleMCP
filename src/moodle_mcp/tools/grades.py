@@ -177,18 +177,24 @@ async def moodle_get_course_grades(
     ],
     ctx: Context = None,
 ) -> CourseGrades:
-    """Get the gradebook for a course."""
+    """Get the gradebook for a course (instructor/admin view)."""
     moodle = get_moodle_client(ctx)
     resolver = get_resolver(ctx)
 
     cid = await resolver.course_id(course)
 
-    data = await moodle.call(
-        "gradereport_user_get_grade_items",
-        {"courseid": cid},
-    )
-
-    return CourseGrades(course_id=cid, user_grades=_grade_items(data))
+    # Prefer the course-wide gradebook endpoint (item definitions for the whole
+    # course). Fall back to the per-user grade report if the token's service
+    # doesn't expose it.
+    try:
+        data = await moodle.call("core_grades_get_gradeitems", {"courseid": cid})
+        grade_items = data.get("gradeitems", data) if isinstance(data, dict) else data
+        return CourseGrades(course_id=cid, user_grades=grade_items or [])
+    except Exception:
+        data = await moodle.call(
+            "gradereport_user_get_grade_items", {"courseid": cid}
+        )
+        return CourseGrades(course_id=cid, user_grades=_grade_items(data))
 
 
 @mcp.tool(
