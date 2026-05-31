@@ -42,35 +42,23 @@ class TestDynamicDiscovery:
             assert callable(tool_fn), f"{tool_name} should be callable"
 
     async def test_use_discovered_tool_site_info(self, all_tools, ctx):
-        """Test using a discovered tool - site info."""
-        # Get tool by name from discovery
+        """Test using a discovered tool - site info (typed dataclass result)."""
         get_site_info = all_tools['moodle_get_site_info']
-
-        # Use it like any other function
-        result = await get_site_info(format="markdown", ctx=ctx)
-
-        assert isinstance(result, str)
-        assert "Moodle Site Information" in result or "Site" in result
+        result = await get_site_info(ctx=ctx)
+        assert result.userid > 0
+        assert result.sitename
 
     async def test_use_discovered_tool_test_connection(self, all_tools, ctx):
         """Test using a discovered tool - test connection."""
         test_connection = all_tools['moodle_test_connection']
-
         result = await test_connection(ctx=ctx)
-
-        assert isinstance(result, str)
-        assert "✓" in result or "Success" in result.lower()
+        assert result.connected is True
 
     async def test_use_discovered_tool_list_courses(self, all_tools, ctx):
         """Test using a discovered tool - list courses."""
         list_courses = all_tools['moodle_list_user_courses']
-
-        # Call without user_id (uses current user)
-        result = await list_courses(format="json", ctx=ctx)
-
-        assert isinstance(result, str)
-        # Should be valid JSON or error message
-        assert "{" in result or "No courses" in result
+        result = await list_courses(ctx=ctx)
+        assert result.count >= 0
 
     async def test_tool_count(self, all_tools):
         """Verify we discover the expected number of tools."""

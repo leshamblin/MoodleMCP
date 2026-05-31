@@ -110,7 +110,7 @@ async def test_course_contents(all_tools, ctx):
 
 async def test_enrolled_users(all_tools, ctx):
     res = await tool(all_tools, "moodle_get_enrolled_users")(course=COURSE, ctx=ctx)
-    assert res.count >= 1
+    assert res.total >= 1
 
 
 async def test_course_categories(all_tools, ctx):
