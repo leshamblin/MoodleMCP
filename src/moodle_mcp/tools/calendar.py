@@ -12,7 +12,7 @@ from pydantic import Field
 
 from ..server import mcp
 from ..utils.error_handling import handle_moodle_errors, require_write_permission
-from ..utils.api_helpers import get_moodle_client
+from ..utils.api_helpers import get_moodle_client, get_resolver
 
 
 # --------------------------------------------------------------------------- #
@@ -70,10 +70,12 @@ def _calendar_event(data: dict) -> CalendarEvent:
 @mcp.tool(
     name="moodle_get_calendar_events",
     description=(
-        "Get calendar events for the authenticated user's calendar over a date "
-        "range. NO PARAMETERS REQUIRED. Optional: days_ahead (1-365, default=30). "
-        "Example: days_ahead=60. Returns events including assignments, quizzes, "
-        "and deadlines."
+        "Get calendar events (assignments, quizzes, deadlines) from the "
+        "authenticated user's calendar over the next 'days_ahead' days. All "
+        "params optional: pass 'course' (id/shortname/name) to return only that "
+        "course's events; 'limit' to cap the count; 'sort_by_time=True' to sort "
+        "soonest-first (the 'upcoming deadlines' view). "
+        "Example: moodle_get_calendar_events(course=7299, sort_by_time=True, limit=10)."
     ),
     tags={"read"},
     annotations=ToolAnnotations(
@@ -83,54 +85,28 @@ def _calendar_event(data: dict) -> CalendarEvent:
 )
 @handle_moodle_errors
 async def moodle_get_calendar_events(
+    course: Annotated[
+        int | str | None,
+        Field(description="Course id, shortname, or name; omit for all of the user's events"),
+    ] = None,
     days_ahead: Annotated[
         int, Field(description="Number of days ahead to fetch events", ge=1, le=365)
     ] = 30,
+    limit: Annotated[
+        int | None, Field(description="Optional max number of events to return", ge=1, le=200)
+    ] = None,
+    sort_by_time: Annotated[
+        bool, Field(description="Sort events soonest-first (the 'upcoming' view)"),
+    ] = False,
     ctx: Context = None,
 ) -> CalendarEventList:
-    """Get the current user's calendar events over a date range."""
+    """User calendar events over a window, optionally filtered to one course,
+    sorted, and limited (subsumes the old upcoming / course-events tools)."""
     moodle = get_moodle_client(ctx)
+    resolver = get_resolver(ctx)
 
     time_now = int(datetime.now().timestamp())
     time_end = int((datetime.now() + timedelta(days=days_ahead)).timestamp())
-
-    events_data = await moodle.call(
-        "core_calendar_get_calendar_events",
-        {
-            "options[timestart]": time_now,
-            "options[timeend]": time_end,
-        },
-    )
-
-    events = [_calendar_event(e) for e in (events_data or {}).get("events", [])]
-    return CalendarEventList(events=events, count=len(events))
-
-
-@mcp.tool(
-    name="moodle_get_upcoming_events",
-    description=(
-        "Get upcoming deadlines and events sorted chronologically. NO PARAMETERS "
-        "REQUIRED. Optional: limit (1-50, default=10). Returns next upcoming events "
-        "with dates and types."
-    ),
-    tags={"read"},
-    annotations=ToolAnnotations(
-        readOnlyHint=True, destructiveHint=False,
-        idempotentHint=True, openWorldHint=True,
-    ),
-)
-@handle_moodle_errors
-async def moodle_get_upcoming_events(
-    limit: Annotated[
-        int, Field(description="Maximum number of events", ge=1, le=50)
-    ] = 10,
-    ctx: Context = None,
-) -> CalendarEventList:
-    """Get upcoming deadlines and events sorted by date."""
-    moodle = get_moodle_client(ctx)
-
-    time_now = int(datetime.now().timestamp())
-    time_end = int((datetime.now() + timedelta(days=60)).timestamp())
 
     events_data = await moodle.call(
         "core_calendar_get_calendar_events",
@@ -141,53 +117,17 @@ async def moodle_get_upcoming_events(
     )
 
     raw = (events_data or {}).get("events", [])
-    events_sorted = sorted(raw, key=lambda x: x.get("timestart", 0))[:limit]
-    events = [_calendar_event(e) for e in events_sorted]
+
+    if course is not None:
+        cid = await resolver.course_id(course)
+        raw = [e for e in raw if e.get("courseid") == cid]
+    if sort_by_time:
+        raw = sorted(raw, key=lambda x: x.get("timestart", 0))
+    if limit is not None:
+        raw = raw[:limit]
+
+    events = [_calendar_event(e) for e in raw]
     return CalendarEventList(events=events, count=len(events))
-
-
-@mcp.tool(
-    name="moodle_get_course_events",
-    description=(
-        "Get calendar events specific to one course. REQUIRED: course_id (integer). "
-        "Optional: days_ahead (1-365, default=60). Example: course_id=2292, "
-        "days_ahead=30."
-    ),
-    tags={"read"},
-    annotations=ToolAnnotations(
-        readOnlyHint=True, destructiveHint=False,
-        idempotentHint=True, openWorldHint=True,
-    ),
-)
-@handle_moodle_errors
-async def moodle_get_course_events(
-    course_id: Annotated[int, Field(description="Course ID", gt=0)],
-    days_ahead: Annotated[
-        int, Field(description="Number of days ahead", ge=1, le=365)
-    ] = 60,
-    ctx: Context = None,
-) -> CalendarEventList:
-    """Get calendar events for a specific course."""
-    moodle = get_moodle_client(ctx)
-
-    time_now = int(datetime.now().timestamp())
-    time_end = int((datetime.now() + timedelta(days=days_ahead)).timestamp())
-
-    events_data = await moodle.call(
-        "core_calendar_get_calendar_events",
-        {
-            "options[timestart]": time_now,
-            "options[timeend]": time_end,
-            "events[courseids][0]": course_id,
-        },
-    )
-
-    course_events = [
-        _calendar_event(e)
-        for e in (events_data or {}).get("events", [])
-        if e.get("courseid") == course_id
-    ]
-    return CalendarEventList(events=course_events, count=len(course_events))
 
 
 # ============================================================================
@@ -272,7 +212,7 @@ async def moodle_create_calendar_event(
         "(integer). Optional: repeat (boolean, default=False) to delete all repeat "
         "instances. WRITE OPERATION - DESTRUCTIVE - only works on whitelisted "
         "courses (default: course 7299). Example: course_id=7299, event_id=123, "
-        "repeat=False. Use moodle_get_course_events to get event_id."
+        "repeat=False. Use moodle_get_calendar_events to get event_id."
     ),
     tags={"write", "calendar"},
     annotations=ToolAnnotations(
