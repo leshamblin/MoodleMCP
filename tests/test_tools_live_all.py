@@ -20,32 +20,66 @@ test_tools_live.py::test_write_safety_blocks_non_whitelisted_course and the
 reversible calendar create/delete test.
 """
 
+import re
+
 import pytest
 
 from fastmcp.exceptions import ToolError
 
 COURSE = 7299
 
-# Moodle-side messages that mean "environment/permission", not "code bug".
-_ENV_MARKERS = (
-    "permission",
-    "not enrolled",
-    "notenroled",
-    "access control",
-    "accessexception",
-    "required capability",
-    "can not",
-    "cannot",
-    "not allowed",
-    "invalid token",
-    "webservice",
-    "no permission",
+# @handle_moodle_errors maps each Moodle exception subclass to a ToolError with
+# a STABLE prefix. Classifying on those prefixes (not loose message substrings
+# like "cannot"/"webservice", which also appear in genuine bug output) keeps a
+# real code bug from being mis-bucketed as an environmental SKIP.
+#
+#   Permission denied:     -> token lacks a capability on 7299     (environmental)
+#   Authentication failed: -> token/web-service config             (environmental)
+#   Connection error:      -> network/site reachability            (environmental)
+#   Not found:             -> 7299 genuinely lacks this data       (environmental)
+#   Invalid input:         -> validation -> a wrong call           (CODE BUG -> FAIL)
+#   Moodle API error:      -> unexpected API/param error           (CODE BUG -> FAIL)
+_ENV_PREFIXES = (
+    "permission denied:",
+    "authentication failed:",
+    "connection error:",
+    "not found:",
 )
+
+# Raw Moodle errorcodes (the literal token inside "Moodle API error (CODE):")
+# that are environmental even under the generic API-error prefix: a capability
+# or enrolment the token lacks on 7299, not a code bug. These are matched
+# exactly against the parenthesised code, not as loose message substrings.
+_ENV_ERRORCODES = frozenset({
+    "nopermissions",
+    "requireloginerror",
+    "cannotviewprofile",
+    "notenroled",            # Moodle spells it with one 'l'
+    "notenroledtocourse",
+})
+
+# Capability errors that Moodle raises as a generic moodle_exception whose code
+# IS the human sentence (no stable short code), e.g. get_conversations when the
+# token can't read another user's messages. Matched as a full phrase, not a
+# bare word, so it can't accidentally bucket an unrelated bug.
+_ENV_PHRASES = (
+    "you do not have permission to perform this action",
+)
+
+_CODE_RE = re.compile(r"moodle api error \(([^)]*)\)")
 
 
 def _is_environmental(err: Exception) -> bool:
     msg = str(err).lower()
-    return any(m in msg for m in _ENV_MARKERS)
+    if any(msg.startswith(p) for p in _ENV_PREFIXES):
+        return True
+    # Only the generic API-error bucket is inspected further.
+    if msg.startswith("moodle api error:"):
+        if any(phrase in msg for phrase in _ENV_PHRASES):
+            return True
+        m = _CODE_RE.search(msg)
+        return bool(m and m.group(1).strip() in _ENV_ERRORCODES)
+    return False
 
 
 async def _discover(moodle_client):
