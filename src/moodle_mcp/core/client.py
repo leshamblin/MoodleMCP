@@ -172,7 +172,7 @@ class MoodleAPIClient:
         except httpx.RequestError as e:
             raise MoodleConnectionError(f"Connection failed: {self._scrub(str(e))}")
         except ValueError as e:
-            raise MoodleAPIError(f"Invalid JSON response: {e}")
+            raise MoodleAPIError(f"Invalid JSON response: {self._scrub(str(e))}")
 
     def _scrub(self, text: str) -> str:
         """Remove the auth token from any text before it reaches the caller."""

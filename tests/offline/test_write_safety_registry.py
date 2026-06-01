@@ -100,9 +100,19 @@ def _write_tool_names() -> list[str]:
     return sorted(t.name for t in tools if "write" in (t.tags or set()))
 
 
-@pytest.mark.parametrize("tool_name", _write_tool_names())
+# An empty discovery would make a bare @parametrize SKIP silently (a vacuous
+# pass). Substitute a sentinel so the test instead runs once and FAILS loudly,
+# surfacing "discovery returned no write tools" rather than disappearing.
+_WRITE_NAMES = _write_tool_names() or ["__NO_WRITE_TOOLS_DISCOVERED__"]
+
+
+@pytest.mark.parametrize("tool_name", _WRITE_NAMES)
 async def test_every_write_tool_blocks_when_writes_disabled(tool_name):
     """No write-tagged tool may execute when all writes are disabled."""
+    assert tool_name != "__NO_WRITE_TOOLS_DISCOVERED__", (
+        "registry discovery found zero write-tagged tools -- the tag-based "
+        "lockdown and this safety net would both be silently inert"
+    )
     ctx = MockContext(
         MoodleAPIClient(base_url="https://blackhole.invalid", token="x"),
         config=_deny_all_config(),
