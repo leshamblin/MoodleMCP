@@ -108,18 +108,39 @@ async def moodle_get_calendar_events(
     time_now = int(datetime.now().timestamp())
     time_end = int((datetime.now() + timedelta(days=days_ahead)).timestamp())
 
+    # core_calendar_get_calendar_events only returns course-scoped events
+    # (assignment/quiz due dates, completion deadlines) for course ids passed
+    # explicitly in events[courseids][]. Without them the window returns only
+    # user/site events and most "upcoming deadline" events are silently missing.
+    cid: int | None = None
+    if course is not None:
+        cid = await resolver.course_id(course)
+        course_ids = [cid]
+    else:
+        uid = await resolver.user_id(None)  # current user (cached)
+        enrolled = await moodle.call(
+            "core_enrol_get_users_courses", {"userid": uid}
+        )
+        course_ids = [c["id"] for c in (enrolled or [])]
+
     events_data = await moodle.call(
         "core_calendar_get_calendar_events",
         {
-            "options[timestart]": time_now,
-            "options[timeend]": time_end,
+            "events": {"courseids": course_ids},
+            "options": {
+                "timestart": time_now,
+                "timeend": time_end,
+                "userevents": 1,
+                "siteevents": 1,
+            },
         },
     )
 
     raw = (events_data or {}).get("events", [])
 
-    if course is not None:
-        cid = await resolver.course_id(course)
+    if cid is not None:
+        # Course filter already applied server-side via courseids; this also
+        # drops any user/site events that aren't tied to the requested course.
         raw = [e for e in raw if e.get("courseid") == cid]
     if sort_by_time:
         raw = sorted(raw, key=lambda x: x.get("timestart", 0))
