@@ -6,7 +6,7 @@ This is the **Moodle MCP Server** - a comprehensive Model Context Protocol serve
 
 ### Key Facts
 - **Location:** `/Users/leshamb2/Documents/Programming/MoodleMCP`
-- **Status:** Production-ready with 77 tools (49 READ + 28 WRITE)
+- **Status:** Production-ready with 70 tools (42 READ + 28 WRITE)
 - **Coverage:** 28% of Moodle Web Services API (167 total functions available)
 - **Primary User:** Elizabeth Shamblin (leshamb2@ncsu.edu)
 - **Development Course:** Course 7299 "Elizabeth's Moodle Playground"
