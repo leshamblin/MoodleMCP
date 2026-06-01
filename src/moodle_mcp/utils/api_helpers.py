@@ -66,38 +66,6 @@ def get_moodle_client(ctx: "Context") -> "MoodleAPIClient":
         f"has lifespan_context: {hasattr(request_ctx, 'lifespan_context')}"
     )
 
-async def resolve_user_id(
-    moodle: "MoodleAPIClient",
-    user_id: int | None = None
-) -> int:
-    """
-    Resolve user ID to current user if not provided.
-
-    This helper eliminates the repeated pattern of checking if user_id is None
-    and fetching the current user's ID from site info.
-
-    Args:
-        moodle: Moodle API client instance
-        user_id: Optional user ID (if None, fetches current user)
-
-    Returns:
-        Resolved user ID
-
-    Example:
-        # Before (repeated 10+ times across codebase):
-        if user_id is None:
-            site_info = await moodle.get_site_info()
-            user_id = site_info['userid']
-
-        # After (1 line):
-        user_id = await resolve_user_id(moodle, user_id)
-    """
-    if user_id is None:
-        site_info = await moodle.get_site_info()
-        return site_info['userid']
-    return user_id
-
-
 def get_resolver(ctx: "Context") -> "MoodleResolver":
     """
     Build a per-call MoodleResolver from the FastMCP context.

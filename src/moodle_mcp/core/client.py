@@ -136,12 +136,21 @@ class MoodleAPIClient:
                     error_code = result.get('errorcode', 'unknown')
                     debug_info = result.get('debuginfo', '')
 
-                    # Classify error types for better handling
-                    if 'invalidtoken' in error_code or 'accessexception' in error_code:
+                    # Classify error types for better handling. Substring
+                    # matches intentionally cover Moodle's spelling variants
+                    # (e.g. 'nopermission' also matches 'nopermissions').
+                    code = error_code.lower()
+                    if 'invalidtoken' in code or 'accessexception' in code:
                         raise MoodleAuthError(f"Authentication failed: {error_msg}")
-                    elif 'nopermission' in error_code or 'requireloginerror' in error_code:
+                    elif (
+                        'nopermission' in code
+                        or 'requirelogin' in code
+                        or 'requirecapability' in code
+                        or 'cannotview' in code
+                        or 'notenrol' in code  # notenroled / notenrolled
+                    ):
                         raise MoodlePermissionError(f"Permission denied: {error_msg}")
-                    elif 'invalidrecord' in error_code or 'notfound' in error_code:
+                    elif 'invalidrecord' in code or 'notfound' in code:
                         raise MoodleNotFoundError(f"Not found: {error_msg}")
                     else:
                         # debug_info can echo back request internals; only

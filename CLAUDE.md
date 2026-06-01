@@ -5,7 +5,7 @@
 This is the **Moodle MCP Server** - a comprehensive Model Context Protocol server for Moodle LMS integration with enterprise-grade safety features.
 
 ### Key Facts
-- **Location:** `/Users/leshamb2/Documents/Programming/MoodleMCP`
+- **Location:** `/Users/wjs/Documents/Programming/MoodleMCP`
 - **Status:** Production-ready with 70 tools (42 READ + 28 WRITE)
 - **Coverage:** 28% of Moodle Web Services API (167 total functions available)
 - **Primary User:** Elizabeth Shamblin (leshamb2@ncsu.edu)
@@ -21,16 +21,23 @@ This is the **Moodle MCP Server** - a comprehensive Model Context Protocol serve
 
 ### Current Implementation
 
-**46 Tools Organized by Category:**
-1. **Site** (3) - Site info, connection test, available functions
-2. **Courses** (7 READ) - List, search, details, contents, users, categories
-3. **Users** (5 READ) - Profiles, search, preferences, participants
-4. **Grades** (6 READ) - User grades, course grades, items, summaries
-5. **Assignments** (4 READ) - List, details, submissions, user assignments
-6. **Messages** (3 READ + 2 WRITE) - Conversations, send, delete
-7. **Calendar** (3 READ + 2 WRITE) - Events, create, delete
-8. **Forums** (3 READ + 2 WRITE) - Discussions, create, reply
-9. **Groups** (6 READ) - Groups, groupings, members, access
+**70 Tools (42 READ + 28 WRITE)** across 14 modules: site, courses, users,
+grades, assignments, quiz, calendar, messages, forums, groups, enrollment,
+completion, badges, dashboard. Several overlapping readers were consolidated
+(e.g. one `moodle_get_grades` and one `moodle_get_calendar_events` replace
+several older per-view tools), so per-category counts drift — list the live
+set instead of trusting a static table:
+
+```bash
+PYTHONPATH=src python -c "
+import asyncio, moodle_mcp.main
+from moodle_mcp.server import mcp
+async def main():
+    for t in sorted(await mcp.list_tools(), key=lambda x: x.name):
+        print(sorted(t.tags), t.name)
+asyncio.run(main())
+"
+```
 
 ### Environment Setup
 
@@ -69,69 +76,82 @@ src/moodle_mcp/
 │   ├── client.py          # Async Moodle API client
 │   ├── config.py          # Configuration with write safety
 │   └── exceptions.py      # Custom exceptions
-├── tools/                 # Tool implementations (9 files)
-│   ├── site.py
-│   ├── courses.py
-│   ├── users.py
-│   ├── grades.py
-│   ├── assignments.py
-│   ├── messages.py        # READ + WRITE
-│   ├── calendar.py        # READ + WRITE
-│   ├── forums.py          # READ + WRITE
-│   └── groups.py
+├── core/
+│   └── resolvers.py       # MoodleResolver: names/emails/shortnames -> ids
+├── models/
+│   └── results.py         # shared @dataclass return models
+├── tools/                 # Tool implementations (14 files)
+│   ├── site.py  courses.py  users.py  grades.py  assignments.py
+│   ├── quiz.py  calendar.py  messages.py  forums.py  groups.py
+│   └── enrollment.py  completion.py  badges.py  dashboard.py
 └── utils/
-    ├── formatting.py      # Response formatters
-    ├── error_handling.py  # Error decorator + write safety
-    └── api_helpers.py     # Helper functions
+    ├── formatting.py      # truncate + timestamp helpers
+    ├── error_handling.py  # error decorator + write-safety decorators
+    └── api_helpers.py     # get_moodle_client / get_resolver
 ```
 
 ### Adding New Tools
 
+Tools use the FastMCP 3.x idiom: `Annotated[...]` params (no `Field`
+defaults), `ToolAnnotations`, `tags={...}`, `moodle.call(...)`, the resolver
+for human-friendly refs, and a `@dataclass` return (FastMCP emits both text and
+`structuredContent`). The `description=` is the single source of truth for what
+the agent sees — keep it complete and example-rich.
+
 **READ-only tool pattern:**
 ```python
+from typing import Annotated
+from mcp.types import ToolAnnotations
+
+@dataclass
+class MyResult:
+    id: int
+    name: str | None = None
+
 @mcp.tool(
     name="moodle_my_tool",
-    description="Clear description with examples",
-    annotations={
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True
-    }
+    description="Clear description with an example call.",
+    tags={"read"},
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False,
+        idempotentHint=True, openWorldHint=True,
+    ),
 )
 @handle_moodle_errors
 async def moodle_my_tool(
-    param: int = Field(description="Parameter", gt=0),
-    format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN),
-    ctx: Context = None
-) -> str:
+    course: Annotated[int | str, Field(description="Course id/shortname/name")],
+    ctx: Context = None,
+) -> MyResult:
     moodle = get_moodle_client(ctx)
-    data = await moodle._make_request('moodle_api_function', {})
-    return format_response(data, "Title", format)
+    resolver = get_resolver(ctx)
+    cid = await resolver.course_id(course)
+    data = await moodle.call("some_moodle_function", {"courseid": cid})
+    return MyResult(id=data.get("id", 0), name=data.get("name"))
 ```
 
 **WRITE operation pattern:**
 ```python
 @mcp.tool(
     name="moodle_create_something",
-    description="WRITE OPERATION - only works on whitelisted courses",
-    annotations={
-        "readOnlyHint": False,
-        "destructiveHint": False,  # True if deletes
-        "idempotentHint": False,
-        "openWorldHint": False
-    }
+    description="WRITE: ... only works on whitelisted courses (7299 in DEV).",
+    tags={"write", "course"},  # add "destructive" if it deletes
+    annotations=ToolAnnotations(
+        readOnlyHint=False, destructiveHint=False,
+        idempotentHint=False, openWorldHint=False,
+    ),
 )
 @handle_moodle_errors
-@require_write_permission('course_id')  # CRITICAL: Add this!
+@require_write_permission("course")  # CRITICAL. Course-less writes:
+                                     # @require_global_write_permission
 async def moodle_create_something(
-    course_id: int = Field(description="Course ID (must be whitelisted)", gt=0),
-    name: str = Field(description="Name", min_length=1),
-    ctx: Context = None
-) -> str:
+    course: Annotated[int | str, Field(description="Course (must be whitelisted)")],
+    name: Annotated[str, Field(description="Name", min_length=1)],
+    ctx: Context = None,
+) -> WriteResult:
     moodle = get_moodle_client(ctx)
-    result = await moodle._make_request('api_function', {'name': name})
-    return f"✅ Created successfully: {result.get('id')}"
+    cid = await get_resolver(ctx).course_id(course)
+    result = await moodle.call("api_function", {"courseid": cid, "name": name})
+    return WriteResult(operation="create_something", details={"id": result.get("id")})
 ```
 
 ### Testing
@@ -225,13 +245,14 @@ git log --oneline -5
 
 ### Current Work Focus
 
-**Next Immediate Tasks:**
-1. ✅ README.md updated
-2. ✅ CLAUDE.md created
-3. ⏳ Comprehensive tests for all 46 tools
-4. ⏳ Phase 1 implementation (Quiz, Enrollment, Assignment submissions)
+**Done:**
+1. ✅ FastMCP 3.x migration; resolver layer (names/emails/shortnames -> ids)
+2. ✅ Phase 1 writes implemented (Quiz, Enrollment, Assignment submissions, Grading)
+3. ✅ Consolidated overlapping readers (70 tools: 42 READ + 28 WRITE)
+4. ✅ Offline (respx) + live (course 7299) test suites; comprehensive read smoke test
+5. ✅ Security hardening: token in POST body, all writes gated, PROD lockdown fails closed
 
-**Goal:** Complete coverage of critical student/teacher workflows (Quiz taking, Assignment submission, Enrollment management).
+**Goal:** Complete coverage of critical student/teacher workflows (Quiz taking, Assignment submission, Enrollment management) — core paths now in place.
 
 ### Quick Reference
 

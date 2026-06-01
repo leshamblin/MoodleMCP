@@ -42,17 +42,6 @@ class AvailableFunctions:
     count: int
 
 
-# --------------------------------------------------------------------- courses
-@dataclass
-class CourseSummary:
-    id: int
-    fullname: str
-    shortname: str
-    visible: bool
-    startdate: int | None = None
-    enddate: int | None = None
-
-
 # ---------------------------------------------------------------------- grading
 @dataclass
 class GradeSaveResult:

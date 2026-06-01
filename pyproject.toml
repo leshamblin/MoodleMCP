@@ -2,7 +2,7 @@
 name = "moodle-mcp-server"
 version = "0.1.0"
 description = "Moodle LMS integration server for Model Context Protocol"
-authors = [{name = "Your Name", email = "your.email@example.com"}]
+authors = [{name = "William Shamblin", email = "wjs@shamblin.org"}]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -10,7 +10,6 @@ dependencies = [
     "httpx[http2]>=0.27.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
-    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -38,3 +37,15 @@ markers = [
 
 [project.scripts]
 moodle-mcp = "moodle_mcp.main:main"
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint.per-file-ignores]
+# main.py and conftest.py deliberately import after runtime setup: main.py
+# adjusts sys.path and assigns the shared mcp instance before importing the
+# tool modules (whose decorators register against it); conftest.py does the
+# same to register tools against a test mcp instance. The ordering is required,
+# so E402 (module import not at top) does not apply.
+"src/moodle_mcp/main.py" = ["E402"]
+"tests/conftest.py" = ["E402"]
