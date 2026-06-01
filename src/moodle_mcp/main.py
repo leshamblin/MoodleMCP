@@ -66,9 +66,27 @@ async def lifespan(server: FastMCP) -> AsyncGenerator[dict, None]:
 
     # Count tools after they're registered (public API in FastMCP 3.x)
     try:
-        tool_count = len(await server.list_tools())
+        exposed_tools = await server.list_tools()
     except Exception:
-        tool_count = 0
+        exposed_tools = []
+    tool_count = len(exposed_tools)
+
+    # PROD write lockdown post-condition: re-verify that no write-tagged tool
+    # is still exposed before serving any request. This is the authoritative
+    # check (the module-level disable() could, in principle, no-op); if any
+    # write tool survived in production, FAIL CLOSED rather than serve it.
+    if config.is_production and not config.prod_allow_writes:
+        leaked = sorted(t.name for t in exposed_tools if "write" in (t.tags or set()))
+        if leaked:
+            print(
+                f"🛑 FATAL: PROD write lockdown failed -- write tools still "
+                f"exposed: {leaked}. Refusing to serve.",
+                file=sys.stderr,
+            )
+            await moodle_client.close()
+            sys.exit(1)
+        print("✓ PROD write lockdown verified: no write tools exposed.", file=sys.stderr)
+
     print(f"Server ready with {tool_count} tools registered.\n", file=sys.stderr)
 
     # Yield context available to all tools via ctx.request_context.lifespan_context
@@ -119,14 +137,23 @@ from moodle_mcp.tools import (  # noqa: F401
 # hide every write-tagged tool from the client entirely. This is belt-and-
 # suspenders with the @require_write_permission decorator (which blocks at
 # call time); disabling by tag also removes them from tool listings.
-# (Write tools are tagged {"write"} during the per-module refactor.)
+#
+# SAFETY: this must FAIL CLOSED. If disabling the write tools raises for any
+# reason, refuse to start rather than booting with writes live in production.
+# The lifespan additionally re-verifies (via list_tools) that no write-tagged
+# tool survived before serving any request.
 _config = get_config()
 if _config.is_production and not _config.prod_allow_writes:
     try:
         mcp.disable(tags={"write"})
         print("⚠️  PROD write lockdown: 'write'-tagged tools disabled.", file=sys.stderr)
     except Exception as e:
-        print(f"⚠️  Could not apply PROD write lockdown via tags: {e}", file=sys.stderr)
+        print(
+            f"🛑 FATAL: could not apply PROD write lockdown ({e}). "
+            "Refusing to start with writes potentially live in production.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 def main():
     """Entry point for running the server."""
