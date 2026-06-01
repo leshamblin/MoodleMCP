@@ -10,8 +10,16 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from ..server import mcp
+from ..core.exceptions import MoodleException
 from ..utils.error_handling import handle_moodle_errors, require_write_permission
 from ..utils.api_helpers import get_moodle_client, get_resolver
+
+# Fan-out caps that bound how many forums/courses a single read scans. Exceeding
+# any of these sets ``truncated=True`` on the result so callers know coverage
+# was partial rather than treating an incomplete list as exhaustive.
+_MAX_FORUMS_SCANNED = 20       # forums per course in get_forum_discussions
+_MAX_COURSES_SEARCHED = 25     # courses scanned in search_forums
+_MAX_FORUMS_PER_COURSE = 10    # forums per course in search_forums
 
 
 # --------------------------------------------------------------------------- #
@@ -36,6 +44,9 @@ class ForumDiscussionList:
     course_id: int
     discussions: list[ForumDiscussion] = field(default_factory=list)
     count: int = 0
+    # True when not every forum in the course was scanned (coverage was capped
+    # to bound request count); the discussion list may be incomplete.
+    truncated: bool = False
 
 
 @dataclass
@@ -43,6 +54,9 @@ class ForumSearchResult:
     search_query: str
     discussions: list[ForumDiscussion] = field(default_factory=list)
     count: int = 0
+    # True when the search stopped early (course/forum scan caps or the result
+    # limit) and more matches may exist beyond what is returned.
+    truncated: bool = False
 
 
 @dataclass
@@ -127,22 +141,34 @@ async def moodle_get_forum_discussions(
     )
     forums = forums_data if isinstance(forums_data, list) else []
 
+    # Cap how many forums we fan out across to bound request count; surface
+    # when the cap actually hit so the caller knows coverage was partial.
+    truncated = len(forums) > _MAX_FORUMS_SCANNED
+
     all_discussions: list[ForumDiscussion] = []
-    for forum in forums[:5]:  # limit forums to avoid too many requests
+    for forum in forums[:_MAX_FORUMS_SCANNED]:
         try:
             discussions_data = await moodle.call(
                 "mod_forum_get_forum_discussions",
                 {"forumid": forum["id"], "perpage": limit},
             )
-        except Exception:
+        except MoodleException:
+            # A single forum the user can't read (or that errors) shouldn't
+            # abort the whole course scan -- skip it and keep going. Non-Moodle
+            # errors (code bugs) are NOT swallowed and will propagate.
             continue
         for disc in discussions_data.get("discussions", []):
             disc["forumname"] = forum.get("name", "Unknown Forum")
             all_discussions.append(_discussion(disc))
 
-    all_discussions = all_discussions[:limit]
+    if len(all_discussions) > limit:
+        truncated = True
+        all_discussions = all_discussions[:limit]
     return ForumDiscussionList(
-        course_id=cid, discussions=all_discussions, count=len(all_discussions)
+        course_id=cid,
+        discussions=all_discussions,
+        count=len(all_discussions),
+        truncated=truncated,
     )
 
 
@@ -230,23 +256,30 @@ async def moodle_search_forums(
         cid = await resolver.course_id(course)
         courses_data = [c for c in courses_data if c["id"] == cid]
 
+    # Bound the fan-out; remember whether either cap (or the result limit)
+    # actually cut the search short so the caller knows it isn't exhaustive.
+    truncated = len(courses_data) > _MAX_COURSES_SEARCHED
+
     needle = search_query.lower()
     matches: list[ForumDiscussion] = []
-    for crs in courses_data[:10]:  # limit courses to avoid too many requests
+    hit_limit = False
+    for crs in courses_data[:_MAX_COURSES_SEARCHED]:
         try:
             forums_data = await moodle.call(
                 "mod_forum_get_forums_by_courses", {"courseids": [crs["id"]]}
             )
-        except Exception:
+        except MoodleException:
             continue
         forums = forums_data if isinstance(forums_data, list) else []
+        if len(forums) > _MAX_FORUMS_PER_COURSE:
+            truncated = True
 
-        for forum in forums[:3]:  # limit forums per course
+        for forum in forums[:_MAX_FORUMS_PER_COURSE]:
             try:
                 discussions_data = await moodle.call(
                     "mod_forum_get_forum_discussions", {"forumid": forum["id"]}
                 )
-            except Exception:
+            except MoodleException:
                 continue
 
             for disc in discussions_data.get("discussions", []):
@@ -257,15 +290,18 @@ async def moodle_search_forums(
                     disc["forumname"] = forum.get("name", "Unknown")
                     matches.append(_discussion(disc))
                     if len(matches) >= limit:
+                        hit_limit = True
                         break
-            if len(matches) >= limit:
+            if hit_limit:
                 break
-        if len(matches) >= limit:
+        if hit_limit:
             break
 
-    matches = matches[:limit]
     return ForumSearchResult(
-        search_query=search_query, discussions=matches, count=len(matches)
+        search_query=search_query,
+        discussions=matches,
+        count=len(matches),
+        truncated=truncated or hit_limit,
     )
 
 
