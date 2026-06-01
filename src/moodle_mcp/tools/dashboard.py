@@ -55,8 +55,8 @@ class StudentOverview:
     description=(
         "One-call snapshot for a student: their enrolled courses, upcoming "
         "calendar events/deadlines, and recent grades. Use this instead of "
-        "chaining moodle_list_user_courses + moodle_get_upcoming_events + "
-        "moodle_get_user_grades. Accepts a user id/username/email; omit for the "
+        "chaining moodle_list_user_courses + moodle_get_calendar_events + "
+        "moodle_get_grades. Accepts a user id/username/email; omit for the "
         "current user. Example: user='student@example.com' or omit for self."
     ),
     tags={"read"},
