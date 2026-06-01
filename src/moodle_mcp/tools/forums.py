@@ -312,11 +312,11 @@ async def moodle_search_forums(
 @mcp.tool(
     name="moodle_create_forum_discussion",
     description=(
-        "Create a new forum discussion/post. REQUIRED: course_id (integer), "
+        "Create a new forum discussion/post. REQUIRED: course (id/shortname/name), "
         "forum_id (forum INSTANCE id, integer), subject (string), message "
         "(string). Optional: pinned (boolean, default=False). WRITE OPERATION "
         "- only works on whitelisted courses (default: course 7299). "
-        "Example: course_id=7299, forum_id=123, subject='New Topic', "
+        "Example: course=7299, forum_id=123, subject='New Topic', "
         "message='Discussion content'."
     ),
     tags={"write", "forum"},
@@ -326,10 +326,11 @@ async def moodle_search_forums(
     ),
 )
 @handle_moodle_errors
-@require_write_permission('course_id')
+@require_write_permission('course')
 async def moodle_create_forum_discussion(
-    course_id: Annotated[
-        int, Field(description="Course ID (must be whitelisted)", gt=0)
+    course: Annotated[
+        int | str,
+        Field(description="Course id, shortname, or name (must be whitelisted)"),
     ],
     forum_id: Annotated[
         int,
@@ -348,6 +349,7 @@ async def moodle_create_forum_discussion(
 ) -> CreatedDiscussion:
     """Create a new discussion topic in a forum (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
+    cid = await get_resolver(ctx).course_id(course)
 
     # mod_forum_add_discussion renders the message as HTML by default and does
     # NOT accept a 'messageformat' parameter/option -- passing one is rejected
@@ -367,7 +369,7 @@ async def moodle_create_forum_discussion(
     return CreatedDiscussion(
         discussion_id=(result or {}).get("discussionid", 0),
         forum_id=forum_id,
-        course_id=course_id,
+        course_id=cid,
         subject=subject,
         pinned=pinned,
     )
@@ -376,10 +378,10 @@ async def moodle_create_forum_discussion(
 @mcp.tool(
     name="moodle_add_forum_post",
     description=(
-        "Reply to an existing forum discussion post. REQUIRED: course_id "
-        "(integer), post_id (integer), subject (string), message (string). "
-        "WRITE OPERATION - only works on whitelisted courses (default: course "
-        "7299). Example: course_id=7299, post_id=456, subject='Re: Topic', "
+        "Reply to an existing forum discussion post. REQUIRED: course "
+        "(id/shortname/name), post_id (integer), subject (string), message "
+        "(string). WRITE OPERATION - only works on whitelisted courses (default: "
+        "course 7299). Example: course=7299, post_id=456, subject='Re: Topic', "
         "message='Reply content'. Use moodle_get_discussion_posts to get "
         "post_id."
     ),
@@ -390,10 +392,11 @@ async def moodle_create_forum_discussion(
     ),
 )
 @handle_moodle_errors
-@require_write_permission('course_id')
+@require_write_permission('course')
 async def moodle_add_forum_post(
-    course_id: Annotated[
-        int, Field(description="Course ID (must be whitelisted)", gt=0)
+    course: Annotated[
+        int | str,
+        Field(description="Course id, shortname, or name (must be whitelisted)"),
     ],
     post_id: Annotated[int, Field(description="Post ID to reply to", gt=0)],
     subject: Annotated[
@@ -406,6 +409,7 @@ async def moodle_add_forum_post(
 ) -> CreatedPost:
     """Reply to an existing forum discussion post (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
+    cid = await get_resolver(ctx).course_id(course)
 
     result = await moodle.call(
         "mod_forum_add_discussion_post",
@@ -420,6 +424,6 @@ async def moodle_add_forum_post(
     return CreatedPost(
         new_post_id=(result or {}).get("postid", 0),
         replied_to_post_id=post_id,
-        course_id=course_id,
+        course_id=cid,
         subject=subject,
     )

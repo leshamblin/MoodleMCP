@@ -464,7 +464,7 @@ async def moodle_get_group_members(
         "WRITE: create a new group in a course. Only succeeds on a "
         "write-whitelisted course (course 7299 in DEV); otherwise returns a "
         "'blocked for safety' error. Returns the new group's id. "
-        "Example: course_id=7299, name='Lab Section A'."
+        "Example: course=7299, name='Lab Section A'."
     ),
     tags={"write", "group"},
     annotations=ToolAnnotations(
@@ -475,10 +475,11 @@ async def moodle_get_group_members(
     ),
 )
 @handle_moodle_errors
-@require_write_permission("course_id")
+@require_write_permission("course")
 async def moodle_create_groups(
-    course_id: Annotated[
-        int, Field(description="Course ID (must be whitelisted)", gt=0)
+    course: Annotated[
+        int | str,
+        Field(description="Course id, shortname, or name (must be whitelisted)"),
     ],
     name: Annotated[str, Field(description="Name of the group", min_length=1)],
     description: Annotated[str, Field(description="Group description")] = "",
@@ -486,11 +487,12 @@ async def moodle_create_groups(
 ) -> CreateGroupsResult:
     """Create a group in a course (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
+    cid = await get_resolver(ctx).course_id(course)
 
     params = {
         "groups": [
             {
-                "courseid": course_id,
+                "courseid": cid,
                 "name": name,
                 "description": description,
             }
@@ -502,12 +504,12 @@ async def moodle_create_groups(
         CreatedGroup(
             id=g.get("id"),
             name=g.get("name", name),
-            courseid=g.get("courseid", course_id),
+            courseid=g.get("courseid", cid),
         )
         for g in (data or [])
     ]
     return CreateGroupsResult(
-        course_id=course_id, count=len(created), groups=created
+        course_id=cid, count=len(created), groups=created
     )
 
 
@@ -517,7 +519,7 @@ async def moodle_create_groups(
         "WRITE: add a user to a group. Only succeeds on a write-whitelisted "
         "course (course 7299 in DEV). Get group_id from "
         "moodle_get_course_groups. Idempotent: re-adding an existing member is "
-        "a no-op. Example: course_id=7299, group_id=42, user_id=624."
+        "a no-op. Example: course=7299, group_id=42, user='student@example.com'."
     ),
     tags={"write", "group"},
     annotations=ToolAnnotations(
@@ -528,27 +530,33 @@ async def moodle_create_groups(
     ),
 )
 @handle_moodle_errors
-@require_write_permission("course_id")
+@require_write_permission("course")
 async def moodle_add_group_members(
-    course_id: Annotated[
-        int, Field(description="Course ID (must be whitelisted)", gt=0)
+    course: Annotated[
+        int | str,
+        Field(description="Course id, shortname, or name (must be whitelisted)"),
     ],
     group_id: Annotated[int, Field(description="Group ID to add the user to", gt=0)],
-    user_id: Annotated[int, Field(description="User ID to add to the group", gt=0)],
+    user: Annotated[
+        int | str, Field(description="User id, username, or email to add")
+    ],
     ctx: Context = None,
 ) -> GroupMembershipChange:
     """Add a user to a group (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
+    resolver = get_resolver(ctx)
+    cid = await resolver.course_id(course)
+    uid = await resolver.user_id(user)
 
-    params = {"members": [{"groupid": group_id, "userid": user_id}]}
+    params = {"members": [{"groupid": group_id, "userid": uid}]}
     await moodle.call("core_group_add_group_members", params)
 
     return GroupMembershipChange(
-        course_id=course_id,
+        course_id=cid,
         group_id=group_id,
-        user_ids=[user_id],
+        user_ids=[uid],
         success=True,
-        message=f"User {user_id} added to group {group_id}",
+        message=f"User {uid} added to group {group_id}",
     )
 
 
@@ -558,7 +566,7 @@ async def moodle_add_group_members(
         "WRITE (destructive): remove a user from a group. Only succeeds on a "
         "write-whitelisted course (course 7299 in DEV). This unassigns the "
         "user from the group; it does not unenrol them from the course. "
-        "Example: course_id=7299, group_id=42, user_id=624."
+        "Example: course=7299, group_id=42, user='student@example.com'."
     ),
     tags={"write", "group", "destructive"},
     annotations=ToolAnnotations(
@@ -569,31 +577,35 @@ async def moodle_add_group_members(
     ),
 )
 @handle_moodle_errors
-@require_write_permission("course_id")
+@require_write_permission("course")
 async def moodle_delete_group_members(
-    course_id: Annotated[
-        int, Field(description="Course ID (must be whitelisted)", gt=0)
+    course: Annotated[
+        int | str,
+        Field(description="Course id, shortname, or name (must be whitelisted)"),
     ],
     group_id: Annotated[
         int, Field(description="Group ID to remove the user from", gt=0)
     ],
-    user_id: Annotated[
-        int, Field(description="User ID to remove from the group", gt=0)
+    user: Annotated[
+        int | str, Field(description="User id, username, or email to remove")
     ],
     ctx: Context = None,
 ) -> GroupMembershipChange:
     """Remove a user from a group (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
+    resolver = get_resolver(ctx)
+    cid = await resolver.course_id(course)
+    uid = await resolver.user_id(user)
 
-    params = {"members": [{"groupid": group_id, "userid": user_id}]}
+    params = {"members": [{"groupid": group_id, "userid": uid}]}
     await moodle.call("core_group_delete_group_members", params)
 
     return GroupMembershipChange(
-        course_id=course_id,
+        course_id=cid,
         group_id=group_id,
-        user_ids=[user_id],
+        user_ids=[uid],
         success=True,
-        message=f"User {user_id} removed from group {group_id}",
+        message=f"User {uid} removed from group {group_id}",
     )
 
 
@@ -603,7 +615,7 @@ async def moodle_delete_group_members(
         "WRITE (destructive): permanently delete a group from a course. Only "
         "succeeds on a write-whitelisted course (course 7299 in DEV). Removes "
         "the group and all its memberships; enrolments are untouched. "
-        "Example: course_id=7299, group_id=42."
+        "Example: course=7299, group_id=42."
     ),
     tags={"write", "group", "destructive"},
     annotations=ToolAnnotations(
@@ -614,22 +626,24 @@ async def moodle_delete_group_members(
     ),
 )
 @handle_moodle_errors
-@require_write_permission("course_id")
+@require_write_permission("course")
 async def moodle_delete_groups(
-    course_id: Annotated[
-        int, Field(description="Course ID (must be whitelisted)", gt=0)
+    course: Annotated[
+        int | str,
+        Field(description="Course id, shortname, or name (must be whitelisted)"),
     ],
     group_id: Annotated[int, Field(description="Group ID to delete", gt=0)],
     ctx: Context = None,
 ) -> DeleteGroupsResult:
     """Delete a group from a course (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
+    cid = await get_resolver(ctx).course_id(course)
 
     params = {"groupids": [group_id]}
     await moodle.call("core_group_delete_groups", params)
 
     return DeleteGroupsResult(
-        course_id=course_id,
+        course_id=cid,
         group_ids=[group_id],
         success=True,
         message=f"Group {group_id} deleted",

@@ -236,14 +236,14 @@ async def test_calendar_create_delete(all_tools, ctx):
     event onto the live calendar.
     """
     created = await tool(all_tools, "moodle_create_calendar_event")(
-        course_id=COURSE, event_name="_pytest_event",
+        course=COURSE, event_name="_pytest_event",
         event_time=1893456000, description="temp", duration=0, ctx=ctx,
     )
     try:
         assert created.event_id > 0
     finally:
         deleted = await tool(all_tools, "moodle_delete_calendar_event")(
-            course_id=COURSE, event_id=created.event_id, repeat=False, ctx=ctx,
+            course=COURSE, event_id=created.event_id, repeat=False, ctx=ctx,
         )
         assert deleted.event_id == created.event_id
 
@@ -258,13 +258,16 @@ async def test_unread_count(all_tools, ctx):
 @pytest.mark.parametrize(
     "name,kwargs",
     [
-        ("moodle_enrol_users", {"course_id": BLOCKED_COURSE, "user_ids": [1], "role_id": 5}),
-        ("moodle_unenrol_users", {"course_id": BLOCKED_COURSE, "user_ids": [1]}),
-        ("moodle_create_groups", {"course_id": BLOCKED_COURSE, "groups": [{"name": "x"}]}),
-        ("moodle_create_calendar_event", {"course_id": BLOCKED_COURSE, "event_name": "x", "event_time": 1893456000}),
+        ("moodle_enrol_users", {"course": BLOCKED_COURSE, "users": [1], "role_id": 5}),
+        ("moodle_unenrol_users", {"course": BLOCKED_COURSE, "users": [1]}),
+        ("moodle_create_groups", {"course": BLOCKED_COURSE, "name": "x"}),
+        ("moodle_create_calendar_event", {"course": BLOCKED_COURSE, "event_name": "x", "event_time": 1893456000}),
         ("moodle_save_assignment_grade", {"course": BLOCKED_COURSE, "assignment": 1, "user": 1, "grade": 50}),
         ("moodle_start_quiz_attempt", {"course": BLOCKED_COURSE, "quiz": 1}),
-        ("moodle_create_forum_discussion", {"course_id": BLOCKED_COURSE, "forum_id": 1, "subject": "x", "message": "y"}),
+        ("moodle_create_forum_discussion", {"course": BLOCKED_COURSE, "forum_id": 1, "subject": "x", "message": "y"}),
+        ("moodle_add_group_members", {"course": BLOCKED_COURSE, "group_id": 1, "user": 1}),
+        ("moodle_delete_groups", {"course": BLOCKED_COURSE, "group_id": 1}),
+        ("moodle_delete_course", {"course": BLOCKED_COURSE}),
     ],
 )
 async def test_write_safety_blocks_non_whitelisted_course(all_tools, ctx, name, kwargs):

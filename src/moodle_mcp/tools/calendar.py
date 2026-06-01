@@ -158,10 +158,10 @@ async def moodle_get_calendar_events(
 @mcp.tool(
     name="moodle_create_calendar_event",
     description=(
-        "Create a calendar event. REQUIRED: course_id (integer), event_name "
-        "(string), event_time (unix timestamp). Optional: description (string), "
-        "duration (seconds, default=0). WRITE OPERATION - only works on whitelisted "
-        "courses (default: course 7299). Example: course_id=7299, "
+        "Create a calendar event. REQUIRED: course (id/shortname/name), "
+        "event_name (string), event_time (unix timestamp). Optional: description "
+        "(string), duration (seconds, default=0). WRITE OPERATION - only works on "
+        "whitelisted courses (default: course 7299). Example: course=7299, "
         "event_name='Team Meeting', event_time=1735689600, "
         "description='Discuss project', duration=3600."
     ),
@@ -172,10 +172,11 @@ async def moodle_get_calendar_events(
     ),
 )
 @handle_moodle_errors
-@require_write_permission('course_id')
+@require_write_permission('course')
 async def moodle_create_calendar_event(
-    course_id: Annotated[
-        int, Field(description="Course ID (must be whitelisted)", gt=0)
+    course: Annotated[
+        int | str,
+        Field(description="Course id, shortname, or name (must be whitelisted)"),
     ],
     event_name: Annotated[
         str, Field(description="Event name/title", min_length=1, max_length=255)
@@ -193,10 +194,11 @@ async def moodle_create_calendar_event(
 ) -> CreatedCalendarEvent:
     """Create a calendar event in a course (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
+    cid = await get_resolver(ctx).course_id(course)
 
     params = {
         "events[0][name]": event_name,
-        "events[0][courseid]": course_id,
+        "events[0][courseid]": cid,
         "events[0][eventtype]": "course",
         "events[0][timestart]": event_time,
         "events[0][timeduration]": duration,
@@ -219,7 +221,7 @@ async def moodle_create_calendar_event(
     return CreatedCalendarEvent(
         event_id=event_id,
         event_name=event_name,
-        course_id=course_id,
+        course_id=cid,
         event_time=event_time,
         event_time_readable=datetime.fromtimestamp(event_time).strftime("%Y-%m-%d %H:%M"),
         duration=duration,
@@ -229,10 +231,10 @@ async def moodle_create_calendar_event(
 @mcp.tool(
     name="moodle_delete_calendar_event",
     description=(
-        "Delete a calendar event. REQUIRED: course_id (integer), event_id "
+        "Delete a calendar event. REQUIRED: course (id/shortname/name), event_id "
         "(integer). Optional: repeat (boolean, default=False) to delete all repeat "
         "instances. WRITE OPERATION - DESTRUCTIVE - only works on whitelisted "
-        "courses (default: course 7299). Example: course_id=7299, event_id=123, "
+        "courses (default: course 7299). Example: course=7299, event_id=123, "
         "repeat=False. Use moodle_get_calendar_events to get event_id."
     ),
     tags={"write", "calendar"},
@@ -242,10 +244,11 @@ async def moodle_create_calendar_event(
     ),
 )
 @handle_moodle_errors
-@require_write_permission('course_id')
+@require_write_permission('course')
 async def moodle_delete_calendar_event(
-    course_id: Annotated[
-        int, Field(description="Course ID (must be whitelisted)", gt=0)
+    course: Annotated[
+        int | str,
+        Field(description="Course id, shortname, or name (must be whitelisted)"),
     ],
     event_id: Annotated[int, Field(description="Event ID to delete", gt=0)],
     repeat: Annotated[
@@ -255,6 +258,7 @@ async def moodle_delete_calendar_event(
 ) -> DeletedCalendarEvent:
     """Delete a calendar event (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
+    cid = await get_resolver(ctx).course_id(course)
 
     params = {
         "events[0][eventid]": event_id,
@@ -265,7 +269,7 @@ async def moodle_delete_calendar_event(
 
     return DeletedCalendarEvent(
         event_id=event_id,
-        course_id=course_id,
+        course_id=cid,
         deleted=True,
         repeat_deleted=repeat,
     )

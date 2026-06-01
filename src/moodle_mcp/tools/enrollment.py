@@ -11,7 +11,7 @@ from pydantic import Field
 
 from ..server import mcp
 from ..utils.error_handling import handle_moodle_errors, require_write_permission
-from ..utils.api_helpers import get_moodle_client
+from ..utils.api_helpers import get_moodle_client, get_resolver
 
 
 _ROLE_NAMES = {5: "Student", 4: "Teacher", 3: "Non-editing teacher", 1: "Manager"}
@@ -36,10 +36,11 @@ class UnenrolmentResult:
 @mcp.tool(
     name="moodle_enrol_users",
     description=(
-        "Enrol users into a course. REQUIRED: course_id (integer), user_ids "
-        "(array of integers). Optional: role_id (default 5=Student; 4=Teacher, "
-        "3=Non-editing teacher, 1=Manager). WRITE OPERATION - only works on "
-        "whitelisted courses (default: course 7299)."
+        "Enrol users into a course. REQUIRED: course (id/shortname/name), users "
+        "(array of user ids, usernames, or emails). Optional: role_id (default "
+        "5=Student; 4=Teacher, 3=Non-editing teacher, 1=Manager). WRITE OPERATION "
+        "- only works on whitelisted courses (default: course 7299). "
+        "Example: course=7299, users=['stu@example.com', 624]."
     ),
     tags={"write", "enrolment"},
     annotations=ToolAnnotations(
@@ -48,10 +49,16 @@ class UnenrolmentResult:
     ),
 )
 @handle_moodle_errors
-@require_write_permission("course_id")
+@require_write_permission("course")
 async def moodle_enrol_users(
-    course_id: Annotated[int, Field(description="Course ID (must be whitelisted)", gt=0)],
-    user_ids: Annotated[list[int], Field(description="User IDs to enrol", min_length=1)],
+    course: Annotated[
+        int | str,
+        Field(description="Course id, shortname, or name (must be whitelisted)"),
+    ],
+    users: Annotated[
+        list[int | str],
+        Field(description="User ids, usernames, or emails to enrol", min_length=1),
+    ],
     role_id: Annotated[int, Field(description="Role id (5=Student, 4=Teacher, 3=Non-editing, 1=Manager)", gt=0)] = 5,
     ctx: Context = None,
 ) -> EnrolmentResult:
@@ -60,19 +67,23 @@ async def moodle_enrol_users(
     Calls enrol_manual_enrol_users, which returns null on success.
     """
     moodle = get_moodle_client(ctx)
+    resolver = get_resolver(ctx)
+    cid = await resolver.course_id(course)
+    uids = [await resolver.user_id(u) for u in users]
+
     await moodle.call(
         "enrol_manual_enrol_users",
         {
             "enrolments": [
-                {"roleid": role_id, "userid": uid, "courseid": course_id}
-                for uid in user_ids
+                {"roleid": role_id, "userid": uid, "courseid": cid}
+                for uid in uids
             ]
         },
     )
     return EnrolmentResult(
-        course_id=course_id,
-        user_ids=user_ids,
-        users_enrolled=len(user_ids),
+        course_id=cid,
+        user_ids=uids,
+        users_enrolled=len(uids),
         role_id=role_id,
         role=_ROLE_NAMES.get(role_id, f"Role {role_id}"),
     )
@@ -81,9 +92,10 @@ async def moodle_enrol_users(
 @mcp.tool(
     name="moodle_unenrol_users",
     description=(
-        "Unenrol (remove) users from a course. REQUIRED: course_id (integer), "
-        "user_ids (array of integers). WRITE OPERATION - DESTRUCTIVE - only "
-        "works on whitelisted courses (default: course 7299)."
+        "Unenrol (remove) users from a course. REQUIRED: course (id/shortname/"
+        "name), users (array of user ids, usernames, or emails). WRITE OPERATION "
+        "- DESTRUCTIVE - only works on whitelisted courses (default: course 7299). "
+        "Example: course=7299, users=['stu@example.com']."
     ),
     tags={"write", "enrolment", "destructive"},
     annotations=ToolAnnotations(
@@ -92,10 +104,16 @@ async def moodle_enrol_users(
     ),
 )
 @handle_moodle_errors
-@require_write_permission("course_id")
+@require_write_permission("course")
 async def moodle_unenrol_users(
-    course_id: Annotated[int, Field(description="Course ID (must be whitelisted)", gt=0)],
-    user_ids: Annotated[list[int], Field(description="User IDs to unenrol", min_length=1)],
+    course: Annotated[
+        int | str,
+        Field(description="Course id, shortname, or name (must be whitelisted)"),
+    ],
+    users: Annotated[
+        list[int | str],
+        Field(description="User ids, usernames, or emails to unenrol", min_length=1),
+    ],
     ctx: Context = None,
 ) -> UnenrolmentResult:
     """Unenrol users from a course.
@@ -104,16 +122,20 @@ async def moodle_unenrol_users(
     Calls enrol_manual_unenrol_users, which returns null on success.
     """
     moodle = get_moodle_client(ctx)
+    resolver = get_resolver(ctx)
+    cid = await resolver.course_id(course)
+    uids = [await resolver.user_id(u) for u in users]
+
     await moodle.call(
         "enrol_manual_unenrol_users",
         {
             "enrolments": [
-                {"userid": uid, "courseid": course_id} for uid in user_ids
+                {"userid": uid, "courseid": cid} for uid in uids
             ]
         },
     )
     return UnenrolmentResult(
-        course_id=course_id,
-        user_ids=user_ids,
-        users_unenrolled=len(user_ids),
+        course_id=cid,
+        user_ids=uids,
+        users_unenrolled=len(uids),
     )

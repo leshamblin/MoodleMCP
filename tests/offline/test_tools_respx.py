@@ -17,6 +17,7 @@ from urllib.parse import parse_qsl
 import httpx
 import pytest
 import respx
+from fastmcp.exceptions import ToolError
 
 from moodle_mcp.core.client import MoodleAPIClient
 from moodle_mcp.core.config import MoodleConfig
@@ -180,6 +181,27 @@ async def test_get_grades_returns_typed_grade_items():
     assert item.grade_formatted == "85.00"
     assert item.grade_raw == 85.0
     assert item.feedback == "good"
+
+
+@respx.mock
+async def test_write_guard_resolves_string_course_before_whitelist():
+    """A write tool given a course NAME must resolve it, then block if the
+    resolved id isn't whitelisted (resolve-then-check ordering)."""
+    # shortname 'EvilCourse' resolves to id 9999, which is not whitelisted.
+    router = Router({
+        "core_course_get_courses_by_field": {"courses": [{"id": 9999}]},
+    })
+    _mount(router)
+
+    ctx = MockContext(_client(), config=_config())  # whitelist is 7299
+    fn = get_tool_by_name(mcp, "moodle_create_calendar_event")
+    with pytest.raises(ToolError, match="blocked for safety"):
+        await fn(course="EvilCourse", event_name="x", event_time=1893456000, ctx=ctx)
+    # The guard had to resolve the name to decide -> the lookup happened.
+    assert any(
+        c.get("wsfunction") == "core_course_get_courses_by_field"
+        for c in router.calls
+    )
 
 
 @respx.mock

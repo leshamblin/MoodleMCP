@@ -581,8 +581,8 @@ async def moodle_create_course(
     name="moodle_update_course",
     description=(
         "Update an existing course (requires admin/teacher permissions). "
-        "REQUIRED: course_id. Optional: fullname, shortname, summary, visible. "
-        "Can only update whitelisted courses in dev mode."
+        "REQUIRED: course (id/shortname/name). Optional: fullname, shortname, "
+        "summary, visible. Can only update whitelisted courses in dev mode."
     ),
     tags={"write", "course"},
     annotations=ToolAnnotations(
@@ -591,10 +591,11 @@ async def moodle_create_course(
     ),
 )
 @handle_moodle_errors
-@require_write_permission('course_id')
+@require_write_permission('course')
 async def moodle_update_course(
-    course_id: Annotated[
-        int, Field(description="Course ID to update", gt=0)
+    course: Annotated[
+        int | str,
+        Field(description="Course id, shortname, or name to update (must be whitelisted)"),
     ],
     fullname: Annotated[
         str | None, Field(description="New full name")
@@ -612,32 +613,33 @@ async def moodle_update_course(
 ) -> CourseUpdated:
     """Update an existing course's properties (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
+    cid = await get_resolver(ctx).course_id(course)
 
-    course: dict = {"id": course_id}
+    payload: dict = {"id": cid}
     if fullname is not None:
-        course["fullname"] = fullname
+        payload["fullname"] = fullname
     if shortname is not None:
-        course["shortname"] = shortname
+        payload["shortname"] = shortname
     if summary is not None:
-        course["summary"] = summary
+        payload["summary"] = summary
     if visible is not None:
-        course["visible"] = visible
+        payload["visible"] = visible
 
-    if len(course) == 1:
+    if len(payload) == 1:
         raise ValueError(
             "No updates specified. Please provide at least one field to update."
         )
 
-    await moodle.call("core_course_update_courses", {"courses": [course]})
-    return CourseUpdated(course_id=course_id, updated=True)
+    await moodle.call("core_course_update_courses", {"courses": [payload]})
+    return CourseUpdated(course_id=cid, updated=True)
 
 
 @mcp.tool(
     name="moodle_delete_course",
     description=(
         "Delete a course permanently (requires admin permissions). REQUIRED: "
-        "course_id. DESTRUCTIVE OPERATION - Cannot be undone! ADMIN ONLY. "
-        "Only works on whitelisted courses in dev mode."
+        "course (id/shortname/name). DESTRUCTIVE OPERATION - Cannot be undone! "
+        "ADMIN ONLY. Only works on whitelisted courses in dev mode."
     ),
     tags={"write", "course", "destructive"},
     annotations=ToolAnnotations(
@@ -646,25 +648,27 @@ async def moodle_update_course(
     ),
 )
 @handle_moodle_errors
-@require_write_permission('course_id')
+@require_write_permission('course')
 async def moodle_delete_course(
-    course_id: Annotated[
-        int, Field(description="Course ID to delete (must be whitelisted!)", gt=0)
+    course: Annotated[
+        int | str,
+        Field(description="Course id, shortname, or name to delete (must be whitelisted!)"),
     ],
     ctx: Context = None,
 ) -> CourseDeleted:
     """Permanently delete a course (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
-    await moodle.call("core_course_delete_courses", {"courseids": [course_id]})
-    return CourseDeleted(course_id=course_id, deleted=True)
+    cid = await get_resolver(ctx).course_id(course)
+    await moodle.call("core_course_delete_courses", {"courseids": [cid]})
+    return CourseDeleted(course_id=cid, deleted=True)
 
 
 @mcp.tool(
     name="moodle_duplicate_course",
     description=(
         "Duplicate an existing course (requires admin/teacher permissions). "
-        "REQUIRED: course_id, fullname, shortname, category_id. Optional: "
-        "visible. Source course must be whitelisted in dev mode."
+        "REQUIRED: course (id/shortname/name), fullname, shortname, category_id. "
+        "Optional: visible. Source course must be whitelisted in dev mode."
     ),
     tags={"write", "course"},
     annotations=ToolAnnotations(
@@ -673,11 +677,11 @@ async def moodle_delete_course(
     ),
 )
 @handle_moodle_errors
-@require_write_permission('course_id')
+@require_write_permission('course')
 async def moodle_duplicate_course(
-    course_id: Annotated[
-        int,
-        Field(description="Source course ID to duplicate (must be whitelisted!)", gt=0),
+    course: Annotated[
+        int | str,
+        Field(description="Source course id, shortname, or name (must be whitelisted!)"),
     ],
     fullname: Annotated[
         str, Field(description="Full name for new course", min_length=1)
@@ -695,11 +699,12 @@ async def moodle_duplicate_course(
 ) -> CourseDuplicated:
     """Duplicate a course with its activities and settings (whitelisted source only)."""
     moodle = get_moodle_client(ctx)
+    cid = await get_resolver(ctx).course_id(course)
 
     result = await moodle.call(
         "core_course_duplicate_course",
         {
-            "courseid": course_id,
+            "courseid": cid,
             "fullname": fullname,
             "shortname": shortname,
             "categoryid": category_id,
@@ -708,7 +713,7 @@ async def moodle_duplicate_course(
     )
 
     return CourseDuplicated(
-        source_course_id=course_id,
+        source_course_id=cid,
         new_course_id=result.get("id") if result else None,
         fullname=fullname,
         shortname=shortname,
@@ -719,8 +724,8 @@ async def moodle_duplicate_course(
     name="moodle_import_course_content",
     description=(
         "Import content from one course to another (requires admin/teacher "
-        "permissions). REQUIRED: source_course_id, dest_course_id. Both courses "
-        "must be whitelisted in dev mode."
+        "permissions). REQUIRED: source_course, dest_course (each id/shortname/"
+        "name). Both courses must be whitelisted in dev mode."
     ),
     tags={"write", "course"},
     annotations=ToolAnnotations(
@@ -729,34 +734,37 @@ async def moodle_duplicate_course(
     ),
 )
 @handle_moodle_errors
-@require_write_permission('source_course_id')
-@require_write_permission('dest_course_id')
+@require_write_permission('source_course')
+@require_write_permission('dest_course')
 async def moodle_import_course_content(
-    source_course_id: Annotated[
-        int,
-        Field(description="Source course ID to import from (must be whitelisted!)", gt=0),
+    source_course: Annotated[
+        int | str,
+        Field(description="Source course id, shortname, or name (must be whitelisted!)"),
     ],
-    dest_course_id: Annotated[
-        int,
-        Field(description="Destination course ID to import to (must be whitelisted!)", gt=0),
+    dest_course: Annotated[
+        int | str,
+        Field(description="Destination course id, shortname, or name (must be whitelisted!)"),
     ],
     ctx: Context = None,
 ) -> CourseImported:
     """Import activities/content from one course into another (both whitelisted)."""
     moodle = get_moodle_client(ctx)
+    resolver = get_resolver(ctx)
+    source_id = await resolver.course_id(source_course)
+    dest_id = await resolver.course_id(dest_course)
 
     await moodle.call(
         "core_course_import_course",
         {
-            "importfrom": source_course_id,
-            "importto": dest_course_id,
+            "importfrom": source_id,
+            "importto": dest_id,
             "deletecontent": 0,  # Don't delete existing content
         },
     )
 
     return CourseImported(
-        source_course_id=source_course_id,
-        dest_course_id=dest_course_id,
+        source_course_id=source_id,
+        dest_course_id=dest_id,
         imported=True,
     )
 

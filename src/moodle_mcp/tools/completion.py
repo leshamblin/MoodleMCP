@@ -194,7 +194,7 @@ async def moodle_get_course_completion_status(
     name="moodle_mark_course_self_completed",
     description=(
         "Mark a course as self-completed by the current user. REQUIRED: "
-        "course_id (integer). Example: course_id=7299. WRITE OPERATION - only "
+        "course (id/shortname/name). Example: course=7299. WRITE OPERATION - only "
         "works on whitelisted courses (default: 7299). Used when students want "
         "to mark the course as completed on their own."
     ),
@@ -205,10 +205,11 @@ async def moodle_get_course_completion_status(
     ),
 )
 @handle_moodle_errors
-@require_write_permission('course_id')
+@require_write_permission('course')
 async def moodle_mark_course_self_completed(
-    course_id: Annotated[
-        int, Field(description="Course ID (must be whitelisted)", gt=0)
+    course: Annotated[
+        int | str,
+        Field(description="Course id, shortname, or name (must be whitelisted)"),
     ],
     ctx: Context = None,
 ) -> WriteResult:
@@ -217,26 +218,27 @@ async def moodle_mark_course_self_completed(
     Requires the course to allow self-completion. Idempotent.
     """
     moodle = get_moodle_client(ctx)
+    cid = await get_resolver(ctx).course_id(course)
 
     await moodle.call(
         "core_completion_mark_course_self_completed",
-        {"courseid": course_id},
+        {"courseid": cid},
     )
 
     return WriteResult(
         success=True,
-        message=f"Course {course_id} marked as self-completed.",
+        message=f"Course {cid} marked as self-completed.",
     )
 
 
 @mcp.tool(
     name="moodle_update_activity_completion_status_manually",
     description=(
-        "Manually update completion status for an activity. REQUIRED: course_id "
-        "(integer), cm_id (integer, course module ID), completed (boolean). "
-        "Example: course_id=7299, cm_id=456, completed=true. WRITE OPERATION - "
-        "only works on whitelisted courses. Used by teachers to manually "
-        "override activity completion."
+        "Manually update completion status for an activity. REQUIRED: course "
+        "(id/shortname/name), activity (name or course-module id), completed "
+        "(boolean). Example: course=7299, activity='Cat Health Quiz', "
+        "completed=true. WRITE OPERATION - only works on whitelisted courses. "
+        "Used by teachers to manually override activity completion."
     ),
     tags={"write", "completion"},
     annotations=ToolAnnotations(
@@ -245,13 +247,15 @@ async def moodle_mark_course_self_completed(
     ),
 )
 @handle_moodle_errors
-@require_write_permission('course_id')
+@require_write_permission('course')
 async def moodle_update_activity_completion_status_manually(
-    course_id: Annotated[
-        int, Field(description="Course ID (must be whitelisted)", gt=0)
+    course: Annotated[
+        int | str,
+        Field(description="Course id, shortname, or name (must be whitelisted)"),
     ],
-    cm_id: Annotated[
-        int, Field(description="Course module ID (activity ID)", gt=0)
+    activity: Annotated[
+        int | str,
+        Field(description="Activity name or course-module id (cmid)"),
     ],
     completed: Annotated[
         bool, Field(description="Completion status: true = complete, false = incomplete")
@@ -264,6 +268,7 @@ async def moodle_update_activity_completion_status_manually(
     Idempotent.
     """
     moodle = get_moodle_client(ctx)
+    cm_id = (await get_resolver(ctx).activity(course, activity)).cmid
 
     await moodle.call(
         "core_completion_update_activity_completion_status_manually",
