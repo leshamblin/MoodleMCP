@@ -11,7 +11,11 @@ from pydantic import Field
 
 from ..server import mcp
 from ..core.exceptions import MoodleNotFoundError
-from ..utils.error_handling import handle_moodle_errors, require_write_permission
+from ..utils.error_handling import (
+    handle_moodle_errors,
+    require_global_write_permission,
+    require_write_permission,
+)
 from ..utils.api_helpers import get_moodle_client, get_resolver
 from ..models.courses import Course, CourseCategory, CourseSection
 
@@ -521,6 +525,7 @@ async def moodle_get_course_categories(ctx: Context = None) -> CategoryList:
     ),
 )
 @handle_moodle_errors
+@require_global_write_permission
 async def moodle_create_course(
     fullname: Annotated[
         str, Field(description="Full name of the course", min_length=1)
@@ -770,6 +775,7 @@ async def moodle_import_course_content(
     ),
 )
 @handle_moodle_errors
+@require_global_write_permission
 async def moodle_create_course_category(
     name: Annotated[
         str, Field(description="Category name", min_length=1)
@@ -827,6 +833,7 @@ async def moodle_create_course_category(
     ),
 )
 @handle_moodle_errors
+@require_global_write_permission
 async def moodle_delete_course_category(
     category_id: Annotated[
         int, Field(description="Category ID to delete", gt=0)
@@ -835,9 +842,25 @@ async def moodle_delete_course_category(
         bool,
         Field(description="Also delete all courses in category (DANGEROUS!)"),
     ] = False,
+    confirm: Annotated[
+        bool,
+        Field(
+            description=(
+                "Must be set to True to allow recursive deletion. Ignored when "
+                "recursive=False. Guards against accidentally cascade-deleting "
+                "every course in the category."
+            )
+        ),
+    ] = False,
     ctx: Context = None,
 ) -> CategoryDeleted:
     """Permanently delete a course category (admin only)."""
+    if recursive and not confirm:
+        raise ValueError(
+            "Recursive category deletion cascade-deletes EVERY course in the "
+            "category and cannot be undone. Re-call with confirm=True to proceed."
+        )
+
     moodle = get_moodle_client(ctx)
 
     await moodle.call(
