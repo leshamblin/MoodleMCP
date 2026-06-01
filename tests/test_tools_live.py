@@ -157,16 +157,19 @@ async def test_assignment_details_by_name(all_tools, ctx):
     assert details.id > 0
 
 
-async def test_save_grade_by_name(all_tools, ctx):
+async def test_save_grade_by_name(all_tools, ctx, moodle_client):
     """Ergonomics + write: grade a real enrolled user by assignment NAME.
 
-    Grading is idempotent, so this is safe to re-run. The assignment and the
-    user are both discovered from course 7299, so no ids are hard-coded.
+    The assignment and the user are both discovered from course 7299, so no
+    ids are hard-coded. The student's prior grade is captured and restored in
+    a finally, so this never permanently alters a real grade even if an
+    assertion fails.
     """
     listed = await tool(all_tools, "moodle_list_assignments")(course=COURSE, ctx=ctx)
     if listed.count == 0:
         pytest.skip("course 7299 has no assignments")
     assignment_name = listed.assignments[0].name
+    assignment_instance = listed.assignments[0].id
 
     enrolled = await tool(all_tools, "moodle_get_enrolled_users")(course=COURSE, ctx=ctx)
     if not enrolled.users:
@@ -174,13 +177,40 @@ async def test_save_grade_by_name(all_tools, ctx):
     students = [u for u in enrolled.users if "student" in (u.roles or [])]
     target = (students or enrolled.users)[0]
 
-    result = await tool(all_tools, "moodle_save_assignment_grade")(
-        course=COURSE, assignment=assignment_name, user=target.id,
-        grade=85.0, feedback="auto-test", ctx=ctx,
+    # Capture the student's current grade so we can restore it afterwards.
+    # Moodle has no "ungrade", so an empty prior grade is restored as -1
+    # (its "no grade" sentinel).
+    prior = await _current_assign_grade(moodle_client, assignment_instance, target.id)
+
+    try:
+        result = await tool(all_tools, "moodle_save_assignment_grade")(
+            course=COURSE, assignment=assignment_name, user=target.id,
+            grade=85.0, feedback="auto-test", ctx=ctx,
+        )
+        assert result.user_id == target.id
+        assert result.grade == 85.0
+        assert result.feedback_saved is True
+    finally:
+        await tool(all_tools, "moodle_save_assignment_grade")(
+            course=COURSE, assignment=assignment_name, user=target.id,
+            grade=prior if prior is not None else -1, feedback="", ctx=ctx,
+        )
+
+
+async def _current_assign_grade(client, assignment_instance: int, user_id: int):
+    """Return the student's current numeric grade for an assignment, or None."""
+    data = await client.call(
+        "mod_assign_get_grades", {"assignmentids": [assignment_instance]}
     )
-    assert result.user_id == target.id
-    assert result.grade == 85.0
-    assert result.feedback_saved is True
+    for a in (data or {}).get("assignments", []):
+        for g in a.get("grades", []):
+            if g.get("userid") == user_id:
+                try:
+                    val = float(g.get("grade"))
+                except (TypeError, ValueError):
+                    return None
+                return val if val >= 0 else None
+    return None
 
 
 async def test_student_overview_one_call(all_tools, ctx):
@@ -200,16 +230,22 @@ async def test_upcoming_events(all_tools, ctx):
 
 
 async def test_calendar_create_delete(all_tools, ctx):
-    """Reversible write: create a course event, then delete it."""
+    """Reversible write: create a course event, then delete it.
+
+    The delete runs in a finally so a failed assertion can never leak the
+    event onto the live calendar.
+    """
     created = await tool(all_tools, "moodle_create_calendar_event")(
         course_id=COURSE, event_name="_pytest_event",
         event_time=1893456000, description="temp", duration=0, ctx=ctx,
     )
-    assert created.event_id > 0
-    deleted = await tool(all_tools, "moodle_delete_calendar_event")(
-        course_id=COURSE, event_id=created.event_id, repeat=False, ctx=ctx,
-    )
-    assert deleted.event_id == created.event_id
+    try:
+        assert created.event_id > 0
+    finally:
+        deleted = await tool(all_tools, "moodle_delete_calendar_event")(
+            course_id=COURSE, event_id=created.event_id, repeat=False, ctx=ctx,
+        )
+        assert deleted.event_id == created.event_id
 
 
 # --------------------------------------------------------------------- messages
