@@ -14,12 +14,52 @@ from ..models.results import GradeSaveResult, BulkGradeResult
 
 
 @dataclass
+class GradeItem:
+    """One gradebook line item (assignment/quiz/category/course total)."""
+
+    id: int
+    item_name: str | None = None
+    item_type: str | None = None       # 'mod' | 'category' | 'course' | ...
+    item_module: str | None = None     # e.g. 'assign', 'quiz' (when item_type='mod')
+    grade_formatted: str | None = None  # display string, e.g. '85.00' or '-'
+    percentage_formatted: str | None = None
+    grade_raw: float | None = None
+    feedback: str | None = None
+    category_id: int | None = None
+    date_graded: int | None = None
+
+
+def _grade_item(d: dict[str, Any]) -> GradeItem:
+    return GradeItem(
+        id=d.get("id", 0),
+        item_name=d.get("itemname"),
+        item_type=d.get("itemtype"),
+        item_module=d.get("itemmodule"),
+        grade_formatted=d.get("gradeformatted"),
+        percentage_formatted=d.get("percentageformatted"),
+        grade_raw=d.get("graderaw"),
+        feedback=d.get("feedback") or None,
+        category_id=d.get("categoryid"),
+        date_graded=d.get("gradedategraded"),
+    )
+
+
+@dataclass
+class OverviewGrade:
+    """A user's overall grade in one course (gradebook overview row)."""
+
+    course_id: int
+    grade: str | None = None       # formatted overall grade, e.g. '92.00' or '-'
+    raw_grade: float | None = None
+
+
+@dataclass
 class CourseUserGrades:
     """A user's grade items within one course."""
 
     course_id: int
     course_name: str
-    grade_items: list[dict[str, Any]] = field(default_factory=list)
+    grade_items: list[GradeItem] = field(default_factory=list)
 
 
 @dataclass
@@ -40,14 +80,27 @@ class GradesTable:
     """Gradebook overview rows (overall grades) for a course/user."""
 
     course_id: int
-    grades: list[dict[str, Any]] = field(default_factory=list)
+    grades: list[OverviewGrade] = field(default_factory=list)
 
 
-def _grade_items(data: Any) -> list[dict[str, Any]]:
-    """Extract the list of per-user grade item groups from a response."""
+def _usergrade_groups(data: Any) -> list[dict[str, Any]]:
+    """The per-user wrapper groups from a gradereport response."""
     if isinstance(data, dict):
         return data.get("usergrades", [])
     return data if isinstance(data, list) else []
+
+
+def _grade_items(data: Any) -> list[dict[str, Any]]:
+    """Flatten to the individual grade line items across all usergrade groups.
+
+    gradereport_user_get_grade_items returns usergrades[].gradeitems[]; the
+    grade lines (assignment/quiz/category/course rows) live in the nested
+    gradeitems, not the group wrapper.
+    """
+    items: list[dict[str, Any]] = []
+    for group in _usergrade_groups(data):
+        items.extend(group.get("gradeitems", []) or [])
+    return items
 
 
 def _category_rows(data: Any) -> list[dict[str, Any]]:
@@ -58,8 +111,8 @@ def _category_rows(data: Any) -> list[dict[str, Any]]:
     """
     seen: set = set()
     categories: list[dict[str, Any]] = []
-    for usergrade in _grade_items(data):
-        for item in usergrade.get("gradeitems", []) or []:
+    for group in _usergrade_groups(data):
+        for item in group.get("gradeitems", []) or []:
             if item.get("itemtype") != "category":
                 continue
             key = item.get("id")
@@ -145,7 +198,7 @@ async def moodle_get_grades(
                 CourseUserGrades(
                     course_id=cid,
                     course_name=c.get("fullname", ""),
-                    grade_items=entries,
+                    grade_items=[_grade_item(e) for e in entries],
                 )
             )
 
@@ -194,13 +247,21 @@ async def moodle_get_grade_overview(
     data = await moodle.call(
         "gradereport_overview_get_course_grades", {"userid": uid}
     )
-    grades = data.get("grades", []) if isinstance(data, dict) else []
+    rows = data.get("grades", []) if isinstance(data, dict) else []
 
     cid = 0
     if course is not None:
         cid = await resolver.course_id(course)
-        grades = [g for g in grades if g.get("courseid") == cid]
+        rows = [g for g in rows if g.get("courseid") == cid]
 
+    grades = [
+        OverviewGrade(
+            course_id=g.get("courseid", 0),
+            grade=g.get("grade"),
+            raw_grade=g.get("rawgrade"),
+        )
+        for g in rows
+    ]
     return GradesTable(course_id=cid, grades=grades)
 
 

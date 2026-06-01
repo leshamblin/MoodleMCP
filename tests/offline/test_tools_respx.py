@@ -150,6 +150,39 @@ async def test_save_assignment_grade_resolves_and_builds_plugindata():
 
 
 @respx.mock
+async def test_get_grades_returns_typed_grade_items():
+    """Grades reader must return typed GradeItem objects, not raw dicts."""
+    router = Router({
+        "core_webservice_get_site_info": {"userid": 100},
+        "gradereport_user_get_grade_items": {
+            "usergrades": [{
+                "gradeitems": [
+                    {"id": 1, "itemname": "Lab 1", "itemtype": "mod",
+                     "itemmodule": "assign", "gradeformatted": "85.00",
+                     "percentageformatted": "85 %", "graderaw": 85.0,
+                     "feedback": "good", "categoryid": 7,
+                     "gradedategraded": 1700000000},
+                ],
+            }],
+        },
+    })
+    _mount(router)
+
+    ctx = MockContext(_client(), config=_config())
+    fn = get_tool_by_name(mcp, "moodle_get_grades")
+    result = await fn(course=7299, ctx=ctx)
+
+    item = result.courses[0].grade_items[0]
+    # Typed object with mapped fields (not a raw dict).
+    assert item.__class__.__name__ == "GradeItem"
+    assert item.item_name == "Lab 1"
+    assert item.item_module == "assign"
+    assert item.grade_formatted == "85.00"
+    assert item.grade_raw == 85.0
+    assert item.feedback == "good"
+
+
+@respx.mock
 async def test_get_forum_discussions_maps_and_flags_no_truncation():
     """Multi-step reader: forums -> discussions, mapped, truncated=False on a small course."""
     router = Router({

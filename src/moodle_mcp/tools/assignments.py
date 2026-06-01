@@ -3,7 +3,7 @@ Assignment tools - READ and WRITE operations for assignments and submissions.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Annotated
+from typing import Annotated
 
 from fastmcp import Context
 from mcp.types import ToolAnnotations
@@ -62,7 +62,14 @@ class SubmissionList:
 class SubmissionStatus:
     assignment_id: int
     user_id: int
-    status: dict[str, Any] = field(default_factory=dict)
+    # Flat summary extracted from mod_assign_get_submission_status.lastattempt
+    # (the full nested API blob is teacher-view metadata that bloats output).
+    grading_status: str | None = None   # e.g. 'graded' | 'notgraded'
+    graded: bool | None = None
+    can_submit: bool | None = None
+    can_edit: bool | None = None
+    locked: bool | None = None
+    submission_status: str | None = None  # the current submission's status string
 
 
 @dataclass
@@ -301,8 +308,17 @@ async def moodle_get_submission_status(
         {"assignid": aid, "userid": uid},
     )
 
+    last = (status_data or {}).get("lastattempt", {}) or {}
+    submission = last.get("submission") or {}
     return SubmissionStatus(
-        assignment_id=aid, user_id=uid, status=status_data or {}
+        assignment_id=aid,
+        user_id=uid,
+        grading_status=last.get("gradingstatus"),
+        graded=last.get("graded"),
+        can_submit=last.get("cansubmit"),
+        can_edit=last.get("canedit"),
+        locked=last.get("locked"),
+        submission_status=submission.get("status"),
     )
 
 
