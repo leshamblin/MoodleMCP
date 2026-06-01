@@ -195,7 +195,7 @@ async def test_student_overview_one_call(all_tools, ctx):
 
 # --------------------------------------------------------------------- calendar
 async def test_upcoming_events(all_tools, ctx):
-    res = await tool(all_tools, "moodle_get_upcoming_events")(ctx=ctx)
+    res = await tool(all_tools, "moodle_get_calendar_events")(sort_by_time=True, ctx=ctx)
     assert hasattr(res, "events")
 
 

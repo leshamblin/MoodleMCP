@@ -200,10 +200,12 @@ def _course_summary(course: Course) -> CourseSummary:
 @mcp.tool(
     name="moodle_list_user_courses",
     description=(
-        "List all courses where a user is enrolled. Accepts a numeric user id, "
-        "a username, or an email (omit for the current user). Optional: "
-        "include_hidden (default False). Example: user=624 or user='jdoe'. "
-        "Returns course ids needed for other course tools."
+        "List the courses a user is enrolled in. Accepts a numeric user id, a "
+        "username, or an email (omit for the current user). Optional: "
+        "include_hidden (default False); recent=True to instead return only the "
+        "user's recently-accessed courses, most-recent first, capped by limit. "
+        "Example: user='jdoe', or recent=True, limit=5. Returns course ids "
+        "needed for other course tools."
     ),
     tags={"read"},
     annotations=ToolAnnotations(
@@ -220,12 +222,36 @@ async def moodle_list_user_courses(
     include_hidden: Annotated[
         bool, Field(description="Include hidden courses")
     ] = False,
+    recent: Annotated[
+        bool,
+        Field(description="Return only recently-accessed courses, most-recent first"),
+    ] = False,
+    limit: Annotated[
+        int, Field(description="Max results when recent=True", ge=1, le=50)
+    ] = 10,
     ctx: Context = None,
 ) -> CourseList:
-    """List the courses a user is enrolled in."""
+    """List a user's enrolled courses, or (recent=True) their recently-accessed
+    courses sorted by most recent."""
     moodle = get_moodle_client(ctx)
     resolver = get_resolver(ctx)
     uid = await resolver.user_id(user)
+
+    if recent:
+        # core_course_get_recent_courses is sorted by last access; fall back to
+        # the enrolment list (capped) if the token's service lacks it.
+        try:
+            recent_data = await moodle.call(
+                "core_course_get_recent_courses", {"userid": uid, "limit": limit}
+            )
+            courses = [Course(**c) for c in (recent_data or [])]
+        except Exception:
+            courses_data = await moodle.call(
+                "core_enrol_get_users_courses", {"userid": uid}
+            )
+            courses = [Course(**c) for c in (courses_data or [])[:limit]]
+        summaries = [_course_summary(c) for c in courses]
+        return CourseList(courses=summaries, count=len(summaries))
 
     courses_data = await moodle.call(
         "core_enrol_get_users_courses", {"userid": uid}
@@ -480,58 +506,6 @@ async def moodle_get_course_categories(ctx: Context = None) -> CategoryList:
     ]
     return CategoryList(categories=infos, count=len(infos))
 
-
-@mcp.tool(
-    name="moodle_get_recent_courses",
-    description=(
-        "Get recently accessed courses for a user, sorted by most recent "
-        "access. Accepts a numeric user id, a username, or an email (omit for "
-        "the current user). Optional: limit (1-50, default 10). Example: "
-        "user=624 or user='jdoe'."
-    ),
-    tags={"read"},
-    annotations=ToolAnnotations(
-        readOnlyHint=True, destructiveHint=False,
-        idempotentHint=True, openWorldHint=True,
-    ),
-)
-@handle_moodle_errors
-async def moodle_get_recent_courses(
-    user: Annotated[
-        int | str | None,
-        Field(description="User id, username, or email; omit for current user"),
-    ] = None,
-    limit: Annotated[
-        int, Field(description="Maximum results", ge=1, le=50)
-    ] = 10,
-    ctx: Context = None,
-) -> CourseList:
-    """List a user's recently accessed courses."""
-    moodle = get_moodle_client(ctx)
-    resolver = get_resolver(ctx)
-    uid = await resolver.user_id(user)
-
-    try:
-        recent_data = await moodle.call(
-            "core_course_get_recent_courses", {"userid": uid, "limit": limit}
-        )
-        courses = [Course(**course) for course in (recent_data or [])]
-    except Exception:
-        # Fallback to all user courses if recent courses function not available.
-        courses_data = await moodle.call(
-            "core_enrol_get_users_courses", {"userid": uid}
-        )
-        courses = [Course(**course) for course in (courses_data or [])[:limit]]
-
-    summaries = [_course_summary(c) for c in courses]
-    return CourseList(courses=summaries, count=len(summaries))
-
-
-# ============================================================================
-# WRITE OPERATIONS - Course and Category Administration
-# ============================================================================
-# These functions require ADMIN permissions in Moodle and are restricted by
-# whitelist in development mode. Use with extreme caution.
 
 @mcp.tool(
     name="moodle_create_course",
