@@ -31,9 +31,17 @@ def client():
     return MoodleAPIClient(base_url="https://example.invalid", token="tok")
 
 
+def _form(request) -> dict[str, str]:
+    """Parse a form-encoded POST body into a dict of decoded keys/values."""
+    from urllib.parse import parse_qsl
+
+    body = request.content.decode()
+    return dict(parse_qsl(body))
+
+
 @respx.mock
 async def test_null_success_returns_none(client):
-    respx.get(ENDPOINT).mock(return_value=httpx.Response(200, text="null"))
+    respx.post(ENDPOINT).mock(return_value=httpx.Response(200, text="null"))
     result = await client.call("enrol_manual_enrol_users",
                                {"enrolments": [{"roleid": 5, "userid": 1, "courseid": 7299}]})
     assert result is None
@@ -41,8 +49,19 @@ async def test_null_success_returns_none(client):
 
 
 @respx.mock
+async def test_token_sent_in_body_not_url(client):
+    """The auth token must travel in the POST body, never the URL query string."""
+    route = respx.post(ENDPOINT).mock(return_value=httpx.Response(200, text="null"))
+    await client.call("core_webservice_get_site_info", {})
+    req = route.calls.last.request
+    assert "wstoken" not in dict(req.url.params)  # not in the URL
+    assert _form(req)["wstoken"] == "tok"          # in the body
+    await client.close()
+
+
+@respx.mock
 async def test_outgoing_params_are_bracket_encoded(client):
-    route = respx.get(ENDPOINT).mock(return_value=httpx.Response(200, text="null"))
+    route = respx.post(ENDPOINT).mock(return_value=httpx.Response(200, text="null"))
     await client.call(
         "mod_assign_save_grade",
         {
@@ -52,8 +71,7 @@ async def test_outgoing_params_are_bracket_encoded(client):
             "plugindata": {"assignfeedbackcomments_editor": {"text": "Nice", "format": 1}},
         },
     )
-    sent = route.calls.last.request.url
-    qs = dict(sent.params)
+    qs = _form(route.calls.last.request)
     assert qs["wsfunction"] == "mod_assign_save_grade"
     assert qs["moodlewsrestformat"] == "json"
     assert qs["assignmentid"] == "42"
@@ -79,7 +97,7 @@ async def test_200_error_body_classified(client, errorcode, exc):
         "errorcode": errorcode,
         "message": "boom",
     }
-    respx.get(ENDPOINT).mock(return_value=httpx.Response(200, json=body))
+    respx.post(ENDPOINT).mock(return_value=httpx.Response(200, json=body))
     with pytest.raises(exc):
         await client.call("core_course_get_courses", {})
     await client.close()

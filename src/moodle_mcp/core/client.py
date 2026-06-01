@@ -17,7 +17,8 @@ class MoodleAPIClient:
     Async Moodle Web Services API client.
 
     Provides persistent HTTP connections via lifespan management.
-    Automatically handles authentication, error responses, and rate limiting.
+    Handles authentication and Moodle error-response classification. The auth
+    token is sent in the request body (POST), never in the URL.
     """
 
     def __init__(
@@ -117,8 +118,12 @@ class MoodleAPIClient:
             request_params.update(flattened_params)
 
         try:
-            # Make async GET request
-            response = await self.client.get(self.api_endpoint, params=request_params)
+            # POST (not GET): the wstoken must travel in the request body, never
+            # in the URL query string, or it leaks into access logs, proxy
+            # caches, and APM traces. server.php reads parameters identically
+            # from a form-encoded body. This also lifts the ~8 KB URL length cap
+            # on large write payloads (forum/feedback HTML).
+            response = await self.client.post(self.api_endpoint, data=request_params)
             response.raise_for_status()
 
             # Parse JSON response
@@ -139,9 +144,15 @@ class MoodleAPIClient:
                     elif 'invalidrecord' in error_code or 'notfound' in error_code:
                         raise MoodleNotFoundError(f"Not found: {error_msg}")
                     else:
+                        # debug_info can echo back request internals; only
+                        # surface it in DEV. In PROD keep the message minimal.
+                        detail = (
+                            f" - {debug_info}"
+                            if debug_info and not self._is_production()
+                            else ""
+                        )
                         raise MoodleAPIError(
-                            f"Moodle API error ({error_code}): {error_msg}"
-                            f"{' - ' + debug_info if debug_info else ''}"
+                            f"Moodle API error ({error_code}): {error_msg}{detail}"
                         )
 
             return result
@@ -153,11 +164,30 @@ class MoodleAPIClient:
             elif status == 404:
                 raise MoodleNotFoundError("HTTP 404: Resource not found")
             else:
-                raise MoodleConnectionError(f"HTTP error {status}: {e}")
+                # str(e) embeds the request URL; with POST the token is no
+                # longer in it, but scrub defensively in case it ever appears.
+                raise MoodleConnectionError(
+                    f"HTTP error {status}: {self._scrub(str(e))}"
+                )
         except httpx.RequestError as e:
-            raise MoodleConnectionError(f"Connection failed: {e}")
+            raise MoodleConnectionError(f"Connection failed: {self._scrub(str(e))}")
         except ValueError as e:
             raise MoodleAPIError(f"Invalid JSON response: {e}")
+
+    def _scrub(self, text: str) -> str:
+        """Remove the auth token from any text before it reaches the caller."""
+        if self.token and self.token in text:
+            text = text.replace(self.token, "***")
+        return text
+
+    def _is_production(self) -> bool:
+        """Best-effort production check for error-detail gating (PROD-safe default)."""
+        try:
+            from .config import get_config
+            return get_config().is_production
+        except Exception:
+            # If config can't be resolved, assume PROD and withhold details.
+            return True
 
     def _flatten_params(self, params: dict[str, Any]) -> dict[str, str]:
         """
