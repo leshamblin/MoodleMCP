@@ -156,10 +156,13 @@ async def moodle_get_grades(
     name="moodle_get_grade_overview",
     description=(
         "Get a user's overall (final) grade in each of their courses -- the "
-        "gradebook overview, one row per course. Omit 'user' for the current "
-        "user. Optionally pass 'course' to return just that course's row. "
-        "Backed by gradereport_overview_get_course_grades (user-scoped). "
-        "Example: user='student@example.com', or course=7299 to filter."
+        "gradebook overview, one row per course. SELF-SCOPED: this reports the "
+        "current user's grades; passing another 'user' only works if the token "
+        "has the 'view grades of other users' capability and otherwise returns "
+        "a permission error (it does NOT silently return your own grades). "
+        "Optionally pass 'course' to return just that course's row. Backed by "
+        "gradereport_overview_get_course_grades. "
+        "Example: course=7299 to filter to one course."
     ),
     tags={"read"},
     annotations=ToolAnnotations(

@@ -313,6 +313,11 @@ async def moodle_create_forum_discussion(
     """Create a new discussion topic in a forum (whitelisted courses only)."""
     moodle = get_moodle_client(ctx)
 
+    # mod_forum_add_discussion renders the message as HTML by default and does
+    # NOT accept a 'messageformat' parameter/option -- passing one is rejected
+    # (errorinvalidparam). Verified live: an HTML body renders unescaped without
+    # any format option. Only discussionsubscribe/discussionpinned/attachment
+    # options are valid here. Do not add messageformat.
     result = await moodle.call(
         "mod_forum_add_discussion",
         {
